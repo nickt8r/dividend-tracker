@@ -338,7 +338,7 @@ function getDashboardHtml(avgs) {
   <tr><td colspan="2" style="padding-bottom:12px;">
     <table width="100%" cellpadding="0" cellspacing="0">
       <tr>
-        ${kpi('IRA Value','$11,358','Cost: $14,952','')}
+        ${kpi('Portfolio Value','$11,358','Cost: $14,952','')}
         ${kpi('Total Return','+$3,501','+23.4%','#4ade80')}
         ${kpi('Closed Positions','+$1,559','+4.1%','#4ade80')}
         ${kpi('Forecast / Week','$'+iraFcstWk,'2026 YTD avg','#64b5f6')}
@@ -486,7 +486,7 @@ function getInteractiveDashboard(avgs) {
 @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;700;800&display=swap');
 *{margin:0;padding:0;box-sizing:border-box;}
 :root{--bg:#080c0d;--s1:#0f1517;--s2:#141b1d;--s3:#1a2325;--bdr:#1f2d30;--bdr2:#253235;--g:#00e5a0;--b:#29b6f6;--am:#ffb74d;--rd:#ef5350;--pu:#b39ddb;--tx:#cfe4e8;--tx2:#6e8f96;--tx3:#3d5a60;--f:'DM Mono',monospace;--h:'Syne',sans-serif;}
-body{background:var(--bg);color:var(--tx);font-family:var(--f);font-size:12px;min-height:100vh;padding:18px 20px 32px;}
+body{background:var(--bg);color:var(--tx);font-family:var(--f);font-size:12px;min-height:100vh;padding:18px 20px 32px;overflow-x:hidden;}
 .hdr{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:20px;}
 .hdr-t{font-family:var(--h);font-size:28px;font-weight:800;color:#fff;letter-spacing:-.5px;}
 .hdr-s{font-size:10px;color:var(--tx2);margin-top:5px;letter-spacing:.12em;text-transform:uppercase;display:flex;align-items:center;gap:6px;}
@@ -506,10 +506,15 @@ body{background:var(--bg);color:var(--tx);font-family:var(--f);font-size:12px;mi
 .kv.g{color:var(--g);}.kv.r{color:var(--rd);}.kv.b{color:var(--b);}.kv.am{color:var(--am);}
 .ks{font-size:10px;color:var(--tx3);margin-top:4px;}.kn{font-size:9px;color:var(--tx3);margin-top:3px;font-style:italic;}
 .g2{display:grid;grid-template-columns:1fr 330px;gap:12px;margin-bottom:12px;}
-@media(max-width:600px){.g2{grid-template-columns:1fr;}}
 .card{background:var(--s1);border:1px solid var(--bdr);border-radius:9px;overflow:hidden;}
-.table-scroll{overflow-x:scroll;-webkit-overflow-scrolling:touch;width:100%;display:block;}
-table{border-collapse:collapse;min-width:750px;width:750px;}
+.table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%;max-width:calc(100vw - 40px);}
+table{border-collapse:collapse;width:750px;}
+thead th{padding:7px 9px;text-align:right;font-size:9px;color:var(--tx3);text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid var(--bdr);background:var(--s2);}
+thead th:first-child{text-align:left;}
+tbody tr{border-bottom:1px solid #0d1314;transition:background .1s;}
+tbody tr:hover{background:#0e1617;}
+tbody tr.z{opacity:.35;}
+td{padding:7px 9px;text-align:right;font-size:11px;}td:first-child{text-align:left;}
 .ch{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--bdr);}
 .ct{font-family:var(--h);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:#fff;}
 .bdg{font-size:9px;padding:3px 7px;border-radius:4px;background:var(--s2);color:var(--tx2);border:1px solid var(--bdr2);}
@@ -588,9 +593,9 @@ td{padding:7px 9px;text-align:right;font-size:11px;}td:first-child{text-align:le
 
 <div id="panel-indiv" class="panel on">
   <div class="kpis">
-    <div class="kpi"><div class="kl">Portfolio Value</div><div class="kv">$55,032</div><div class="ks">Cost basis $69,372</div><div class="kn">Current positions only</div></div>
-    <div class="kpi"><div class="kl">Total Return</div><div class="kv g">+$12,015</div><div class="ks">+17.3% on cost basis</div></div>
-    <div class="kpi kp"><div class="kl">Total Return — Closed</div><div class="kv r">-$634</div><div class="ks">-0.4% all-time</div></div>
+    <div class="kpi"><div class="kl">Portfolio Value</div><div class="kv">$55,032</div><div class="ks">Cost basis $69,372</div></div>
+    <div class="kpi"><div class="kl">Total Return</div><div class="kv g">+$12,015</div><div class="ks">+17.3%</div></div>
+    <div class="kpi kp"><div class="kl">Total Return — Closed</div><div class="kv r">-$634</div><div class="ks">-0.4%</div></div>
     <div class="kpi kb"><div class="kl">Forecast / Week</div><div class="kv b">$${indivFcstWk}</div><div class="ks">2026 YTD avg × shares</div></div>
     <div class="kpi ka"><div class="kl">Forecast / Month</div><div class="kv am">$${indivFcstMo}</div><div class="ks">2026 YTD avg × shares</div></div>
   </div>
@@ -670,15 +675,15 @@ td{padding:7px 9px;text-align:right;font-size:11px;}td:first-child{text-align:le
 
 <div id="panel-ira" class="panel">
   <div class="kpis">
-    <div class="kpi"><div class="kl">IRA Value</div><div class="kv">$11,358</div><div class="ks">Cost basis $14,952</div></div>
+    <div class="kpi"><div class="kl">Portfolio Value</div><div class="kv">$11,358</div><div class="ks">Cost basis $14,952</div></div>
     <div class="kpi"><div class="kl">Total Return</div><div class="kv g">+$3,501</div><div class="ks">+23.4%</div></div>
-    <div class="kpi kp"><div class="kl">Total Return — Closed</div><div class="kv g">+$1,559</div><div class="ks">+4.1% all-time</div></div>
+    <div class="kpi kp"><div class="kl">Total Return — Closed</div><div class="kv g">+$1,559</div><div class="ks">+4.1%</div></div>
     <div class="kpi kb"><div class="kl">Forecast / Week</div><div class="kv b">$${iraFcstWk}</div><div class="ks">2026 YTD avg × shares</div></div>
     <div class="kpi ka"><div class="kl">Forecast / Month</div><div class="kv am">$${iraFcstMo}</div><div class="ks">2026 YTD avg × shares</div></div>
   </div>
   <div class="g2">
     <div class="card">
-      <div class="ch"><span class="ct">IRA Positions</span><span class="bdg">3 active</span></div>
+      <div class="ch"><span class="ct">Positions</span><span class="bdg">3 active</span></div>
       <div class="table-scroll">
       <table>
         <thead><tr><th>Ticker</th><th>Shares</th><th>Price</th><th>Curr Val</th><th>P/L</th><th>Dividends</th><th>P/L+Div</th><th>Tot Ret%</th><th>Payback%</th><th>YTD Avg/Wk</th><th>Fcst/Wk</th><th>Div Yield%</th></tr></thead>
