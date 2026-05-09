@@ -1,0 +1,55 @@
+{
+  "meta": {
+    "last_updated": "2026-05-08",
+    "email": "nickt8r@gmail.com",
+    "ytd_start": "2026-01-01",
+    "split_cutoff": "2025-12-02"
+  },
+  "indiv": {
+    "positions": [
+      {"ticker":"BABO","shares":1000,"cost_basis":16751.52,"dividends":6148.59,"ex_div_day":"THU","pay_day":"FRI","price":10.59},
+      {"ticker":"CHPY","shares":200, "cost_basis":10954.50,"dividends":3447.03,"ex_div_day":"WED","pay_day":"THU","price":74.90},
+      {"ticker":"LFGY","shares":200, "cost_basis":8118.00, "dividends":3056.52,"ex_div_day":"WED","pay_day":"THU","price":24.36},
+      {"ticker":"NVDY","shares":1500,"cost_basis":25828.42,"dividends":10682.72,"ex_div_day":"THU","pay_day":"FRI","price":14.08},
+      {"ticker":"PLTY","shares":100, "cost_basis":7719.10, "dividends":3019.78,"ex_div_day":"THU","pay_day":"FRI","price":34.70}
+    ],
+    "watchlist": [
+      {"ticker":"GOOW","shares":0,"cost_basis":0,"dividends":0,"ex_div_day":"MON","pay_day":"TUE","price":82.35},
+      {"ticker":"HOOW","shares":0,"cost_basis":0,"dividends":0,"ex_div_day":"MON","pay_day":"TUE","price":23.46},
+      {"ticker":"PLTW","shares":0,"cost_basis":0,"dividends":0,"ex_div_day":"MON","pay_day":"TUE","price":22.24},
+      {"ticker":"WPAY","shares":0,"cost_basis":0,"dividends":0,"ex_div_day":"TUE","pay_day":"WED","price":39.31}
+    ],
+    "closed_positions": [
+      {"ticker":"CLM",  "shares":800,  "close_price":8.47,  "cost_basis":6764.48, "dividends":0.00,    "close_date":"2025-12-01"},
+      {"ticker":"CONY", "shares":200,  "close_price":30.00, "cost_basis":17995.82,"dividends":6334.20, "close_date":"2025-11-01"},
+      {"ticker":"MSTY", "shares":700,  "close_price":9.84,  "cost_basis":15575.19,"dividends":3569.66, "close_date":"2025-10-01"},
+      {"ticker":"MSTY", "shares":300,  "close_price":15.69, "cost_basis":6675.08, "dividends":872.50,  "close_date":"2025-10-01"},
+      {"ticker":"PLTY", "shares":256,  "close_price":67.14, "cost_basis":17891.95,"dividends":1885.44, "close_date":"2025-09-01"},
+      {"ticker":"ULTY", "shares":10000,"close_price":4.62,  "cost_basis":61722.28,"dividends":13552.90,"close_date":"2025-08-01"}
+    ]
+  },
+  "ira": {
+    "positions": [
+      {"ticker":"APLY","shares":450,"cost_basis":5851.00,"dividends":1670.13,"ex_div_day":"THU","pay_day":"FRI","price":12.53},
+      {"ticker":"CONY","shares":55, "cost_basis":4348.00,"dividends":3032.07,"ex_div_day":"THU","pay_day":"FRI","price":27.19},
+      {"ticker":"NVDY","shares":300,"cost_basis":4753.09,"dividends":2393.31,"ex_div_day":"THU","pay_day":"FRI","price":14.08}
+    ],
+    "closed_positions": [
+      {"ticker":"MSTY","shares":200,  "close_price":15.70,"cost_basis":4103.96,"dividends":1168.16,"close_date":"2025-10-01"},
+      {"ticker":"ULTY","shares":5134,"close_price":4.14, "cost_basis":23515.89,"dividends":113.75, "close_date":"2025-08-01"}
+    ]
+  },
+  "ytd_weekly_divs": {
+    "BABO": [0.0915,0.1166,0.0864,0.1277,0.1695,0.1190,0.1138,0.0965,0.0984,0.0908,0.0892,0.0928,0.0870,0.0866,0.0913,0.0906,0.0833,0.1012,0.0924],
+    "CHPY": [0.5040,0.5196,0.5267,0.4826,0.5253,0.5293,0.5259,0.4686,0.4577,0.4384,0.3851,0.4912,0.4089,0.4406,0.5384,0.5008,0.6041,0.6024],
+    "LFGY": [0.2885,0.2835,0.2822,0.2741,0.2353,0.2170,0.2294,0.2209,0.2356,0.2303,0.2369,0.2253,0.2033,0.2203,0.2356,0.2562,0.2228,0.2513],
+    "NVDY": [0.1435,0.1054,0.0950,0.0848,0.1076,0.0939,0.1057,0.0944,0.1151,0.1162,0.1197,0.1332,0.1195,0.1148,0.1111,0.1161,0.1401,0.2072,0.1281],
+    "PLTY": [0.5130,0.4508,0.4130,0.3791,0.3688,0.3591,0.3845,0.3865,0.3933,0.4781,0.7999,0.8018,0.4779,0.4497,0.4548,0.3556,0.3832,0.3607,0.2708],
+    "CONY": [0.4342,0.4091,0.3965,0.2219,0.3089,0.2838,0.2556,0.2994,0.3177,0.3115,0.5942,0.6138,0.5332,0.3763,0.3767,0.3833,0.4161,0.5307,0.4464],
+    "APLY": [0.0532,0.0481,0.0415,0.0473,0.0494,0.0584,0.1774,0.0498,0.0911,0.0649,0.0622,0.0471,0.0606,0.0617,0.0613,0.0717,0.0902,0.0958,0.1033],
+    "GOOW": [0.5200,0.5400,0.5600,0.5800,0.5900,0.6000,0.6100,0.5800,0.5700,0.5600,0.5900,0.6200,0.5800,0.5700,0.5600,0.5900,0.6100,0.5971],
+    "HOOW": [0.9500,0.9600,0.9700,0.9800,0.9900,1.0000,0.9800,0.9700,0.9600,0.9500,0.9600,0.9700,0.9800,0.9700,0.9600,0.9500,0.9700,0.9722],
+    "PLTW": [0.5400,0.5500,0.5600,0.5500,0.5400,0.5500,0.5600,0.5700,0.5600,0.5500,0.5400,0.5500,0.5600,0.5700,0.5600,0.5500,0.5584],
+    "WPAY": [0.4500,0.4600,0.4700,0.4800,0.4700,0.4600,0.4700,0.4800,0.4700,0.4600,0.4700,0.4800,0.4700,0.4600,0.4700,0.4730]
+  }
+}

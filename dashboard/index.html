@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dividend Portfolio Dashboard</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;700;800&display=swap');
+*{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --bg:#080c0d;--s1:#0f1517;--s2:#141b1d;--s3:#1a2325;
+  --bdr:#1f2d30;--bdr2:#253235;
+  --g:#00e5a0;--b:#29b6f6;--am:#ffb74d;--rd:#ef5350;--pu:#b39ddb;
+  --tx:#cfe4e8;--tx2:#6e8f96;--tx3:#3d5a60;
+  --f:'DM Mono',monospace;--h:'Syne',sans-serif;
+}
+body{background:var(--bg);color:var(--tx);font-family:var(--f);font-size:12px;min-height:100vh;padding:18px 20px 32px;}
+.hdr{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:20px;}
+.hdr-t{font-family:var(--h);font-size:28px;font-weight:800;color:#fff;letter-spacing:-.5px;}
+.hdr-s{font-size:10px;color:var(--tx2);margin-top:5px;letter-spacing:.12em;text-transform:uppercase;display:flex;align-items:center;gap:6px;}
+.dot{width:6px;height:6px;background:var(--g);border-radius:50%;animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+.hdr-r{display:flex;align-items:center;gap:8px;}
+.tabs{display:flex;gap:4px;}
+.tab{padding:6px 14px;border-radius:5px;font-family:var(--h);font-size:11px;font-weight:700;letter-spacing:.07em;border:1px solid var(--bdr2);color:var(--tx2);background:var(--s1);cursor:pointer;transition:all .15s;}
+.tab.on{background:var(--g);color:#000;border-color:var(--g);}
+.rbtn{padding:6px 14px;background:var(--g);color:#000;border:none;border-radius:5px;font-family:var(--h);font-size:11px;font-weight:800;cursor:pointer;}
+.ts{font-size:10px;color:var(--tx3);}
+.panel{display:none;}
+.panel.on{display:block;}
+
+/* KPI */
+.kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px;}
+.kpis4{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px;}
+.kpi{background:var(--s1);border:1px solid var(--bdr);border-radius:9px;padding:14px 16px;position:relative;overflow:hidden;}
+.kpi::after{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--g);opacity:.5;}
+.kpi.kr::after{background:var(--rd);}
+.kpi.kb::after{background:var(--b);}
+.kpi.ka::after{background:var(--am);}
+.kpi.kp::after{background:var(--pu);}
+.kl{font-size:9px;color:var(--tx2);text-transform:uppercase;letter-spacing:.12em;margin-bottom:7px;}
+.kv{font-family:var(--h);font-size:20px;font-weight:700;line-height:1;color:#fff;}
+.kv.g{color:var(--g);}.kv.r{color:var(--rd);}.kv.b{color:var(--b);}.kv.am{color:var(--am);}
+.ks{font-size:10px;color:var(--tx3);margin-top:4px;}
+.kn{font-size:9px;color:var(--tx3);margin-top:3px;font-style:italic;}
+
+/* LAYOUT */
+.g2{display:grid;grid-template-columns:1fr 330px;gap:12px;margin-bottom:12px;}
+.card{background:var(--s1);border:1px solid var(--bdr);border-radius:9px;overflow:hidden;}
+.ch{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--bdr);}
+.ct{font-family:var(--h);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:#fff;}
+.bdg{font-size:9px;padding:3px 7px;border-radius:4px;background:var(--s2);color:var(--tx2);border:1px solid var(--bdr2);}
+
+/* SORT BUTTONS — A→Z always first */
+.sort-btns{display:flex;gap:4px;}
+.sb{padding:3px 8px;border-radius:4px;font-family:var(--f);font-size:9px;border:1px solid var(--bdr2);color:var(--tx3);background:transparent;cursor:pointer;transition:all .15s;white-space:nowrap;}
+.sb:hover{border-color:var(--tx2);color:var(--tx2);}
+.sb.active{border-color:var(--g);color:var(--g);background:rgba(0,229,160,.08);}
+
+/* TABLE */
+table{width:100%;border-collapse:collapse;}
+thead th{padding:7px 9px;text-align:right;font-size:9px;color:var(--tx3);text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid var(--bdr);background:var(--s2);}
+thead th:first-child{text-align:left;}
+tbody tr{border-bottom:1px solid #0d1314;transition:background .1s;}
+tbody tr:hover{background:#0e1617;}
+tbody tr.z{opacity:.35;}
+td{padding:7px 9px;text-align:right;font-size:11px;}
+td:first-child{text-align:left;}
+.tk{font-family:var(--h);font-weight:700;font-size:12px;color:#fff;}
+.exd{display:inline-block;font-size:8px;padding:1px 4px;border-radius:3px;margin-left:4px;vertical-align:middle;}
+.thu{background:rgba(0,229,160,.1);color:var(--g);border:1px solid rgba(0,229,160,.25);}
+.wed{background:rgba(41,182,246,.1);color:var(--b);border:1px solid rgba(41,182,246,.25);}
+.mon{background:rgba(255,183,77,.1);color:var(--am);border:1px solid rgba(255,183,77,.25);}
+.tue{background:rgba(239,83,80,.1);color:#ff8a80;border:1px solid rgba(239,83,80,.25);}
+.g{color:var(--g);}.r{color:var(--rd);}.dm{color:var(--tx3);}
+.tft td{padding:7px 9px;border-top:1px solid var(--bdr2);background:var(--s2);font-size:10px;color:var(--tx2);}
+.tft td:first-child{font-family:var(--h);font-size:9px;letter-spacing:.08em;text-transform:uppercase;}
+
+/* PAYBACK inline */
+.pb-section{border-top:1px solid var(--bdr2);}
+.pb-header{display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid var(--bdr2);}
+.pb-grid{display:flex;}
+.pb-col{flex:1;padding:10px 12px;border-right:1px solid var(--bdr2);}
+.pb-col:last-child{border-right:none;}
+.pb-tk{font-family:var(--h);font-size:11px;font-weight:700;color:#fff;}
+.pb-nums{font-size:9px;color:var(--tx3);margin:3px 0 5px;display:flex;justify-content:space-between;}
+.pb-pct{font-family:var(--h);font-size:13px;font-weight:700;color:var(--g);}
+.pb-track{height:4px;background:var(--s3);border-radius:2px;overflow:hidden;margin-top:5px;}
+.pb-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--b),var(--g));}
+
+/* RIGHT PANEL */
+.rp{display:flex;flex-direction:column;gap:12px;}
+
+/* BAR CHART with SVG trend line */
+.chart-outer{padding:14px 16px 12px;}
+.chart-inner{display:flex;gap:10px;align-items:stretch;}
+.y-axis{display:flex;flex-direction:column;justify-content:space-between;align-items:flex-end;padding-bottom:18px;flex-shrink:0;}
+.y-label{font-size:9px;color:var(--tx3);}
+.chart-body{flex:1;display:flex;flex-direction:column;gap:4px;position:relative;}
+.bars-area{position:relative;height:120px;display:flex;align-items:flex-end;gap:5px;border-left:1px solid var(--bdr2);border-bottom:1px solid var(--bdr2);}
+.bars-area::before{content:'';position:absolute;left:0;right:0;top:0;height:1px;background:var(--bdr2);opacity:.4;}
+.bars-area::after{content:'';position:absolute;left:0;right:0;top:50%;height:1px;background:var(--bdr2);opacity:.4;}
+.bar-col{flex:1;height:100%;display:flex;align-items:flex-end;}
+.bar{width:100%;border-radius:2px 2px 0 0;background:var(--g);opacity:.6;cursor:default;transition:opacity .15s;}
+.bar:hover{opacity:1;}
+/* SVG overlay for trend line */
+.chart-svg{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;}
+.x-labels{display:flex;gap:5px;}
+.x-lbl{flex:1;text-align:center;font-size:8px;color:var(--tx3);padding-top:3px;}
+.chart-foot{display:flex;justify-content:space-between;margin-top:10px;padding-top:10px;border-top:1px solid var(--bdr);}
+.cfl{font-size:9px;color:var(--tx3);margin-bottom:3px;text-transform:uppercase;letter-spacing:.08em;}
+.cfv{font-family:var(--h);font-size:16px;font-weight:700;}
+.trend-note{font-size:9px;color:var(--tx3);margin-top:5px;display:flex;align-items:center;gap:5px;}
+.trend-swatch{width:20px;height:2px;background:var(--am);display:inline-block;border-radius:1px;}
+
+/* CALENDAR */
+.calnote{font-size:9px;color:var(--tx3);padding:7px 16px 0;font-style:italic;}
+.cal-body{padding:10px 16px 12px;}
+.cr{display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--bdr);}
+.cr:last-child{border:none;}
+.ctk{font-family:var(--h);font-weight:700;font-size:12px;color:#fff;width:46px;flex-shrink:0;}
+.cd{font-size:10px;color:var(--tx2);flex:1;}
+.ca{font-size:11px;color:var(--g);}
+.cs{font-size:8px;padding:2px 6px;border-radius:3px;margin-left:5px;flex-shrink:0;}
+.paid{background:rgba(0,229,160,.1);color:var(--g);border:1px solid rgba(0,229,160,.25);}
+.caltot{display:flex;justify-content:space-between;padding:8px 16px;background:var(--s2);border-top:1px solid var(--bdr2);font-size:10px;color:var(--tx2);}
+.caltot span{color:var(--g);font-family:var(--h);font-weight:700;}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div>
+    <div class="hdr-t">Dividend Portfolio</div>
+    <div class="hdr-s"><span class="dot"></span>Auto-updated &middot; Pay dates: Thu &amp; Fri</div>
+  </div>
+  <div class="hdr-r">
+    <div class="tabs">
+      <div class="tab on" onclick="switchTab('indiv',this)">INDIV</div>
+      <div class="tab" onclick="switchTab('ira',this)">IRA</div>
+    </div>
+    <button class="rbtn">&#9654; Run Now</button>
+    <span class="ts">Last: Fri May 8 &middot; 8:02am</span>
+  </div>
+</div>
+
+
+<!-- ══════════ INDIV ══════════ -->
+<div id="panel-indiv" class="panel on">
+  <div class="kpis">
+    <div class="kpi">
+      <div class="kl">Portfolio Value</div><div class="kv">$55,032</div>
+      <div class="ks">Cost basis $69,372</div><div class="kn">Current positions only</div>
+    </div>
+    <div class="kpi">
+      <div class="kl">Total Return</div><div class="kv g">+$12,015</div>
+      <div class="ks">+17.3% on cost basis</div><div class="kn">Current positions only</div>
+    </div>
+    <div class="kpi kp">
+      <div class="kl">Total Return &mdash; Closed Positions</div><div class="kv r">-$634</div>
+      <div class="ks">-0.4% on all-time cost</div><div class="kn">Incl. CONY, MSTY&times;2, ULTY, PLTY, CLM</div>
+    </div>
+    <div class="kpi kb">
+      <div class="kl">Forecast / Week</div><div class="kv b">$471</div>
+      <div class="ks">2026 YTD avg &times; shares</div>
+    </div>
+    <div class="kpi ka">
+      <div class="kl">Forecast / Month</div><div class="kv am">$1,886</div>
+      <div class="ks">2026 YTD avg &times; shares</div>
+    </div>
+  </div>
+
+  <div class="g2">
+    <div class="card">
+      <div class="ch"><span class="ct">Positions</span><span class="bdg">5 active &middot; 4 watchlist</span></div>
+      <table>
+        <thead><tr>
+          <th>Ticker</th><th>Shares</th><th>Price</th><th>Curr Val</th>
+          <th>P/L</th><th>Dividends</th><th>P/L + Div</th>
+          <th>Tot Ret%</th><th>Payback%</th><th>YTD Avg/Wk</th><th>Fcst/Wk</th><th>Div Yield%</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="tk">BABO</span><span class="exd thu">THU</span></td>
+            <td>1,000</td><td>$10.59</td><td>$10,590</td>
+            <td class="r">-$6,162</td><td class="g">$6,149</td><td class="r">-$13</td>
+            <td class="r">-0.1%</td><td class="g">36.7%</td><td>$0.1013</td><td class="g">$101.30</td><td>49.7%</td>
+          </tr>
+          <tr>
+            <td><span class="tk">CHPY</span><span class="exd wed">WED</span></td>
+            <td>200</td><td>$74.90</td><td>$14,980</td>
+            <td class="g">+$4,026</td><td class="g">$3,447</td><td class="g">+$7,473</td>
+            <td class="g">+68.2%</td><td class="g">31.5%</td><td>$0.4972</td><td class="g">$99.44</td><td>34.5%</td>
+          </tr>
+          <tr>
+            <td><span class="tk">LFGY</span><span class="exd wed">WED</span></td>
+            <td>200</td><td>$24.36</td><td>$4,872</td>
+            <td class="r">-$3,246</td><td class="g">$3,057</td><td class="r">-$189</td>
+            <td class="r">-2.3%</td><td class="g">37.7%</td><td>$0.2416</td><td class="g">$48.32</td><td>51.6%</td>
+          </tr>
+          <tr>
+            <td><span class="tk">NVDY</span><span class="exd thu">THU</span></td>
+            <td>1,500</td><td>$14.08</td><td>$21,120</td>
+            <td class="r">-$4,708</td><td class="g">$10,683</td><td class="g">+$5,975</td>
+            <td class="g">+23.1%</td><td class="g">41.4%</td><td>$0.1185</td><td class="g">$177.75</td><td>43.8%</td>
+          </tr>
+          <tr>
+            <td><span class="tk">PLTY</span><span class="exd thu">THU</span></td>
+            <td>100</td><td>$34.70</td><td>$3,470</td>
+            <td class="r">-$4,249</td><td class="g">$3,020</td><td class="r">-$1,229</td>
+            <td class="r">-15.9%</td><td class="g">39.1%</td><td>$0.4463</td><td class="g">$44.63</td><td>66.9%</td>
+          </tr>
+          <tr class="z"><td><span class="tk">GOOW</span><span class="exd mon">MON</span></td><td class="dm">—</td><td>$82.35</td><td class="dm">—</td><td class="dm">—</td><td class="dm">—</td><td class="dm">—</td><td class="dm">—</td><td class="dm">—</td><td>$0.5971</td><td class="dm">—</td><td>37.7%</td></tr>
+          <tr class="z"><td><span class="tk">HOOW</span><span class="exd mon">MON</span></td><td class="dm">—</td><td>$23.46</td><td class="dm">—</td><td class="dm">—</td><td class="dm">—</td><td class="dm">—</td><td class="dm">—</td><td class="dm">—</td><td>$0.9722</td><td class="dm">—</td><td>215.5%</td></tr>
+          <tr class="z"><td><span class="tk">PLTW</span><span class="exd mon">MON</span></td><td class="dm">—</td><td>$22.24</td><td class="dm">—</td><td class="dm">—</td><td class="dm">—</td><td class="dm">—</td><td class="dm">—</td><td class="dm">—</td><td>$0.5584</td><td class="dm">—</td><td>130.6%</td></tr>
+          <tr class="z"><td><span class="tk">WPAY</span><span class="exd tue">TUE</span></td><td class="dm">—</td><td>$39.31</td><td class="dm">—</td><td class="dm">—</td><td class="dm">—</td><td class="dm">—</td><td class="dm">—</td><td class="dm">—</td><td>$0.4730</td><td class="dm">—</td><td>62.6%</td></tr>
+        </tbody>
+        <tbody class="tft"><tr>
+          <td>Current portfolio total</td><td colspan="2"></td>
+          <td>$55,032</td><td class="r">-$14,340</td><td class="g">$26,355</td>
+          <td class="g">+$12,015</td><td class="g">+17.3%</td><td class="g">38.0%</td>
+          <td></td><td class="g">$471.44</td><td></td>
+        </tr></tbody>
+      </table>
+
+      <div class="pb-section">
+        <div class="pb-header">
+          <span class="ct" style="font-size:11px;">Payback Progress</span>
+          <div class="sort-btns">
+            <button class="sb" onclick="sortPB('indiv','alpha',this)">A&rarr;Z</button>
+            <button class="sb active" onclick="sortPB('indiv','pct-desc',this)">% High&rarr;Low</button>
+            <button class="sb" onclick="sortPB('indiv','pct-asc',this)">% Low&rarr;High</button>
+          </div>
+        </div>
+        <div class="pb-grid" id="pb-indiv"></div>
+      </div>
+    </div>
+
+    <div class="rp">
+      <!-- WEEKLY DIV RECEIVED with trend line -->
+      <div class="card">
+        <div class="ch"><span class="ct">Weekly Div Received</span><span class="bdg">Actual &middot; 8 weeks</span></div>
+        <div class="chart-outer">
+          <div class="chart-inner">
+            <div class="y-axis">
+              <span class="y-label">$614</span>
+              <span class="y-label">$460</span>
+              <span class="y-label">$307</span>
+              <span class="y-label">$153</span>
+              <span class="y-label">$0</span>
+            </div>
+            <div class="chart-body">
+              <div class="bars-area" id="bars-indiv" style="height:120px;">
+                <!-- Mar17 457.34 → 74.4% -->
+                <div class="bar-col"><div class="bar" style="height:74.4%" title="Mar 17 · $457.34"></div></div>
+                <!-- Mar24 482.48 → 78.5% -->
+                <div class="bar-col"><div class="bar" style="height:78.5%" title="Mar 24 · $482.48"></div></div>
+                <!-- Mar31 451.57 → 73.5% -->
+                <div class="bar-col"><div class="bar" style="height:73.5%" title="Mar 31 · $451.57"></div></div>
+                <!-- Apr7  426.21 → 69.4% -->
+                <div class="bar-col"><div class="bar" style="height:69.4%" title="Apr 7 · $426.21"></div></div>
+                <!-- Apr14 435.61 → 70.9% -->
+                <div class="bar-col"><div class="bar" style="height:70.9%" title="Apr 14 · $435.61"></div></div>
+                <!-- Apr21 455.11 → 74.1% -->
+                <div class="bar-col"><div class="bar" style="height:74.1%" title="Apr 21 · $455.11"></div></div>
+                <!-- Apr28 483.17 → 78.7% -->
+                <div class="bar-col"><div class="bar" style="height:78.7%" title="Apr 28 · $483.17"></div></div>
+                <!-- May5  613.45 → 99.8% -->
+                <div class="bar-col"><div class="bar" style="height:99.8%" title="May 5 · $613.45"></div></div>
+                <!-- SVG trend line drawn by JS -->
+                <svg class="chart-svg" id="trend-svg-indiv"></svg>
+              </div>
+              <div class="x-labels">
+                <div class="x-lbl">Mar17</div><div class="x-lbl">Mar24</div>
+                <div class="x-lbl">Mar31</div><div class="x-lbl">Apr7</div>
+                <div class="x-lbl">Apr14</div><div class="x-lbl">Apr21</div>
+                <div class="x-lbl">Apr28</div><div class="x-lbl">May5</div>
+              </div>
+            </div>
+          </div>
+          <div class="trend-note"><span class="trend-swatch"></span> 8-week average</div>
+          <div class="chart-foot">
+            <div><div class="cfl">This week (May 8)</div><div class="cfv g">$482.37</div></div>
+            <div style="text-align:right"><div class="cfl">8-week avg</div><div class="cfv" style="color:#fff">$475.62</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DIV FORECAST (was Pay Calendar) -->
+      <div class="card">
+        <div class="ch">
+          <span class="ct">Div Forecast</span>
+          <div class="sort-btns">
+            <button class="sb" onclick="sortCal('indiv','alpha',this)">A&rarr;Z</button>
+            <button class="sb active" onclick="sortCal('indiv','date',this)">By Date</button>
+          </div>
+        </div>
+        <div class="calnote">Dates shown = day cash is deposited to account</div>
+        <div class="cal-body" id="cal-indiv"></div>
+        <div class="caltot">Week total <span>$482.37</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════ IRA ══════════ -->
+<div id="panel-ira" class="panel">
+  <div class="kpis4">
+    <div class="kpi">
+      <div class="kl">IRA Value</div><div class="kv">$11,358</div>
+      <div class="ks">Cost basis $14,952</div><div class="kn">Current positions only</div>
+    </div>
+    <div class="kpi">
+      <div class="kl">Total Return</div><div class="kv g">+$3,501</div>
+      <div class="ks">+23.4% on cost basis</div><div class="kn">Current positions only</div>
+    </div>
+    <div class="kpi kp">
+      <div class="kl">Total Return &mdash; Closed Positions</div><div class="kv g">+$1,559</div>
+      <div class="ks">+4.1% on all-time cost</div><div class="kn">Incl. MSTY (200sh) &amp; ULTY (5,134sh)</div>
+    </div>
+    <div class="kpi kb">
+      <div class="kl">Forecast / Week</div><div class="kv b">$89</div>
+      <div class="ks">2026 YTD avg &times; shares</div>
+    </div>
+    <div class="kpi ka">
+      <div class="kl">Forecast / Month</div><div class="kv am">$356</div>
+      <div class="ks">2026 YTD avg &times; shares</div>
+    </div>
+  </div>
+
+  <div class="g2">
+    <div class="card">
+      <div class="ch"><span class="ct">IRA Positions</span><span class="bdg">3 active</span></div>
+      <table>
+        <thead><tr>
+          <th>Ticker</th><th>Shares</th><th>Price</th><th>Curr Val</th>
+          <th>P/L</th><th>Dividends</th><th>P/L + Div</th>
+          <th>Tot Ret%</th><th>Payback%</th><th>YTD Avg/Wk</th><th>Fcst/Wk</th><th>Div Yield%</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="tk">APLY</span><span class="exd thu">THU</span></td>
+            <td>450</td><td>$12.53</td><td>$5,638</td>
+            <td class="r">-$212</td><td class="g">$1,670</td><td class="g">+$1,458</td>
+            <td class="g">+24.9%</td><td class="g">28.5%</td><td>$0.0703</td><td class="g">$31.64</td><td>29.2%</td>
+          </tr>
+          <tr>
+            <td><span class="tk">CONY</span><span class="exd thu">THU</span></td>
+            <td>55</td><td>$27.19</td><td>$1,495</td>
+            <td class="r">-$2,853</td><td class="g">$3,032</td><td class="g">+$180</td>
+            <td class="g">+4.1%</td><td class="g">69.7%</td><td>$0.3952</td><td class="g">$21.74</td><td>75.6%</td>
+          </tr>
+          <tr>
+            <td><span class="tk">NVDY</span><span class="exd thu">THU</span></td>
+            <td>300</td><td>$14.08</td><td>$4,224</td>
+            <td class="r">-$529</td><td class="g">$2,393</td><td class="g">+$1,864</td>
+            <td class="g">+39.2%</td><td class="g">50.4%</td><td>$0.1185</td><td class="g">$35.55</td><td>43.8%</td>
+          </tr>
+        </tbody>
+        <tbody class="tft"><tr>
+          <td>IRA total</td><td colspan="2"></td>
+          <td>$11,358</td><td class="r">-$3,594</td><td class="g">$7,096</td>
+          <td class="g">+$3,501</td><td class="g">+23.4%</td><td class="g">47.5%</td>
+          <td></td><td class="g">$88.92</td><td></td>
+        </tr></tbody>
+      </table>
+
+      <div class="pb-section">
+        <div class="pb-header">
+          <span class="ct" style="font-size:11px;">Payback Progress</span>
+          <div class="sort-btns">
+            <button class="sb active" onclick="sortPB('ira','alpha',this)">A&rarr;Z</button>
+            <button class="sb" onclick="sortPB('ira','pct-desc',this)">% High&rarr;Low</button>
+            <button class="sb" onclick="sortPB('ira','pct-asc',this)">% Low&rarr;High</button>
+          </div>
+        </div>
+        <div class="pb-grid" id="pb-ira"></div>
+      </div>
+    </div>
+
+    <div class="rp">
+      <!-- WEEKLY DIV RECEIVED — IRA -->
+      <div class="card">
+        <div class="ch"><span class="ct">Weekly Div Received</span><span class="bdg">Actual &middot; 8 weeks</span></div>
+        <div class="chart-outer">
+          <div class="chart-inner">
+            <div class="y-axis">
+              <span class="y-label">$120</span>
+              <span class="y-label">$90</span>
+              <span class="y-label">$60</span>
+              <span class="y-label">$30</span>
+              <span class="y-label">$0</span>
+            </div>
+            <div class="chart-body">
+              <!-- IRA weekly: NVDY(300) + CONY(55) + APLY(450) — same date windows -->
+              <div class="bars-area" id="bars-ira" style="height:120px;">
+                <!-- Using IRA div history scaled to max ~$120 -->
+                <!-- Mar17: NVDY=0.1195*300=35.85, CONY=0.5332*55=29.33, APLY=0.0606*450=27.27 = $92.45 → 77% -->
+                <div class="bar-col"><div class="bar" style="height:77%" title="Mar 17 · $92.45"></div></div>
+                <!-- Mar24: NVDY=0.1197*300=35.91, CONY=0.6138*55=33.76, APLY=0.0622*450=27.99 = $97.66 → 81% -->
+                <div class="bar-col"><div class="bar" style="height:81%" title="Mar 24 · $97.66"></div></div>
+                <!-- Mar31: NVDY=0.1162*300=34.86, CONY=0.3115*55=17.13, APLY=0.0649*450=29.21 = $81.20 → 68% -->
+                <div class="bar-col"><div class="bar" style="height:68%" title="Mar 31 · $81.20"></div></div>
+                <!-- Apr7: NVDY=0.1148*300=34.44, CONY=0.3763*55=20.70, APLY=0.0617*450=27.77 = $82.90 → 69% -->
+                <div class="bar-col"><div class="bar" style="height:69%" title="Apr 7 · $82.90"></div></div>
+                <!-- Apr14: NVDY=0.1111*300=33.33, CONY=0.3767*55=20.72, APLY=0.0717*450=32.27 = $86.32 → 72% -->
+                <div class="bar-col"><div class="bar" style="height:72%" title="Apr 14 · $86.32"></div></div>
+                <!-- Apr21: NVDY=0.1161*300=34.83, CONY=0.3833*55=21.08, APLY=0.0902*450=40.59 = $96.50 → 80% -->
+                <div class="bar-col"><div class="bar" style="height:80%" title="Apr 21 · $96.50"></div></div>
+                <!-- Apr28: NVDY=0.1401*300=42.03, CONY=0.4161*55=22.89, APLY=0.0958*450=43.11 = $108.03 → 90% -->
+                <div class="bar-col"><div class="bar" style="height:90%" title="Apr 28 · $108.03"></div></div>
+                <!-- May5: NVDY=0.2072*300=62.16, CONY=0.5307*55=29.19, APLY=0.0958*450=43.11 = $134.46 → 100%+ cap -->
+                <div class="bar-col"><div class="bar" style="height:100%" title="May 5 · $134.46"></div></div>
+                <svg class="chart-svg" id="trend-svg-ira"></svg>
+              </div>
+              <div class="x-labels">
+                <div class="x-lbl">Mar17</div><div class="x-lbl">Mar24</div>
+                <div class="x-lbl">Mar31</div><div class="x-lbl">Apr7</div>
+                <div class="x-lbl">Apr14</div><div class="x-lbl">Apr21</div>
+                <div class="x-lbl">Apr28</div><div class="x-lbl">May5</div>
+              </div>
+            </div>
+          </div>
+          <div class="trend-note"><span class="trend-swatch"></span> 8-week average</div>
+          <div class="chart-foot">
+            <div><div class="cfl">This week (May 8)</div><div class="cfv g">$109.47</div></div>
+            <div style="text-align:right"><div class="cfl">8-week avg</div><div class="cfv" style="color:#fff">$97.44</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DIV FORECAST — IRA -->
+      <div class="card">
+        <div class="ch">
+          <span class="ct">Div Forecast</span>
+          <div class="sort-btns">
+            <button class="sb active" onclick="sortCal('ira','alpha',this)">A&rarr;Z</button>
+            <button class="sb" onclick="sortCal('ira','date',this)">By Date</button>
+          </div>
+        </div>
+        <div class="calnote">Dates shown = day cash is deposited to account</div>
+        <div class="cal-body" id="cal-ira"></div>
+        <div class="caltot">Week total <span>$109.47</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<script>
+// ── DATA ──
+const pbData = {
+  indiv: [
+    {tk:"NVDY",recv:10683,cost:25828,pct:41.4},
+    {tk:"PLTY",recv:3020, cost:7719, pct:39.1},
+    {tk:"LFGY",recv:3057, cost:8118, pct:37.7},
+    {tk:"BABO",recv:6149, cost:16752,pct:36.7},
+    {tk:"CHPY",recv:3447, cost:10955,pct:31.5},
+  ],
+  ira: [
+    {tk:"CONY",recv:3032,cost:4348,pct:69.7},
+    {tk:"NVDY",recv:2393,cost:4753,pct:50.4},
+    {tk:"APLY",recv:1670,cost:5851,pct:28.5},
+  ]
+};
+
+const calData = {
+  indiv: [
+    {tk:"CHPY",date:"Thu May 7",ds:1,pps:"$0.6024/sh",amt:"+$120.48"},
+    {tk:"LFGY",date:"Thu May 7",ds:1,pps:"$0.2513/sh",amt:"+$50.26"},
+    {tk:"BABO",date:"Fri May 8",ds:2,pps:"$0.0924/sh",amt:"+$92.40"},
+    {tk:"NVDY",date:"Fri May 8",ds:2,pps:"$0.1281/sh",amt:"+$192.15"},
+    {tk:"PLTY",date:"Fri May 8",ds:2,pps:"$0.2708/sh",amt:"+$27.08"},
+  ],
+  ira: [
+    {tk:"APLY",date:"Fri May 8",ds:1,pps:"$0.1033/sh",amt:"+$46.49"},
+    {tk:"CONY",date:"Fri May 8",ds:1,pps:"$0.4464/sh",amt:"+$24.55"},
+    {tk:"NVDY",date:"Fri May 8",ds:1,pps:"$0.1281/sh",amt:"+$38.43"},
+  ]
+};
+
+// ── PAYBACK ──
+function renderPB(acct, items) {
+  document.getElementById('pb-'+acct).innerHTML = items.map(d=>`
+    <div class="pb-col">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;">
+        <span class="pb-tk">${d.tk}</span><span class="pb-pct">${d.pct}%</span>
+      </div>
+      <div class="pb-nums"><span>$${d.recv.toLocaleString()} recv'd</span><span>of $${d.cost.toLocaleString()}</span></div>
+      <div class="pb-track"><div class="pb-fill" style="width:${d.pct}%"></div></div>
+    </div>`).join('');
+}
+function sortPB(acct, mode, btn) {
+  btn.closest('.sort-btns').querySelectorAll('.sb').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const items=[...pbData[acct]];
+  if(mode==='pct-desc') items.sort((a,b)=>b.pct-a.pct);
+  else if(mode==='pct-asc') items.sort((a,b)=>a.pct-b.pct);
+  else items.sort((a,b)=>a.tk.localeCompare(b.tk));
+  renderPB(acct,items);
+}
+
+// ── CALENDAR ──
+function renderCal(acct, items) {
+  document.getElementById('cal-'+acct).innerHTML = items.map(d=>`
+    <div class="cr">
+      <span class="ctk">${d.tk}</span>
+      <span class="cd">${d.date} &middot; ${d.pps}</span>
+      <span class="ca">${d.amt}</span>
+      <span class="cs paid">PAID</span>
+    </div>`).join('');
+}
+function sortCal(acct, mode, btn) {
+  btn.closest('.sort-btns').querySelectorAll('.sb').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const items=[...calData[acct]];
+  if(mode==='date') items.sort((a,b)=>a.ds-b.ds||a.tk.localeCompare(b.tk));
+  else items.sort((a,b)=>a.tk.localeCompare(b.tk));
+  renderCal(acct,items);
+}
+
+// ── TREND LINE (SVG horizontal line at avg height) ──
+function drawTrendLine(svgId, avgPct) {
+  // avgPct is 0-100, where 100 = top of chart area
+  const svg = document.getElementById(svgId);
+  if(!svg) return;
+  const y = (1 - avgPct/100) * 100; // percentage from top
+  svg.innerHTML = `
+    <line x1="0" y1="${y}%" x2="100%" y2="${y}%"
+      stroke="#ffb74d" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.75"/>`;
+}
+
+// INDIV avg = 475.62 / 614 max = 77.5%
+// IRA avg = 97.44 / 120 max = 81.2%
+function initTrendLines() {
+  drawTrendLine('trend-svg-indiv', 75.5);
+  drawTrendLine('trend-svg-ira', 81.2);
+}
+
+// ── TAB ──
+function switchTab(n,el) {
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  document.getElementById('panel-'+n).classList.add('on');
+  el.classList.add('on');
+}
+
+// ── INIT ──
+renderPB('indiv',[...pbData.indiv].sort((a,b)=>b.pct-a.pct));
+renderPB('ira',[...pbData.ira].sort((a,b)=>a.tk.localeCompare(b.tk)));
+renderCal('indiv',[...calData.indiv].sort((a,b)=>a.ds-b.ds||a.tk.localeCompare(b.tk)));
+renderCal('ira',[...calData.ira].sort((a,b)=>a.tk.localeCompare(b.tk)));
+// Trend lines need DOM to be ready
+window.addEventListener('load', initTrendLines);
+</script>
+</body>
+</html>
