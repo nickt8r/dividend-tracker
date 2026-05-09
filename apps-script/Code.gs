@@ -66,9 +66,9 @@ function updatePrices(ss) {
 
 // ─── HELPERS ────────────────────────────────────────────────
 function kpi(label, value, sub, color) {
-  return `<td width="20%" style="padding:4px;">
-    <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#2a2a2a;border:1px solid #444;border-radius:6px;">
-      <tr><td style="padding:12px;">
+  return `<td width="20%" style="padding:4px;vertical-align:top;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#2a2a2a;border:1px solid #444;border-radius:6px;height:100%;">
+      <tr><td style="padding:12px;vertical-align:top;">
         <div style="color:#aaa;font-size:10px;font-family:Arial,sans-serif;text-transform:uppercase;margin-bottom:6px;">${label}</div>
         <div style="color:${color||'#ffffff'};font-size:20px;font-weight:bold;font-family:Arial,sans-serif;margin-bottom:4px;">${value}</div>
         <div style="color:#888;font-size:10px;font-family:Arial,sans-serif;">${sub}</div>
@@ -102,9 +102,9 @@ function tableHeader(cols) {
 
 function pbBar(ticker, pct, recv, cost) {
   const filled = Math.round(pct);
-  return `<td style="padding:6px 4px;width:${100/5}%">
-    <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#2a2a2a;border:1px solid #444;border-radius:6px;">
-      <tr><td style="padding:10px 12px;">
+  return `<td style="padding:6px 4px;width:${100/5}%;vertical-align:top;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#2a2a2a;border:1px solid #444;border-radius:6px;height:100%;">
+      <tr><td style="padding:10px 12px;vertical-align:top;">
         <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
           <span style="font-family:Arial,sans-serif;font-size:12px;font-weight:bold;color:#fff;">${ticker}</span>
           <span style="font-family:Arial,sans-serif;font-size:13px;font-weight:bold;color:#4ade80;">${pct}%</span>
@@ -450,7 +450,8 @@ body{background:var(--bg);color:var(--tx);font-family:var(--f);font-size:12px;mi
 .sort-btns{display:flex;gap:4px;}
 .sb{padding:3px 8px;border-radius:4px;font-family:var(--f);font-size:9px;border:1px solid var(--bdr2);color:var(--tx3);background:transparent;cursor:pointer;transition:all .15s;}
 .sb:hover{border-color:var(--tx2);color:var(--tx2);}.sb.active{border-color:var(--g);color:var(--g);background:rgba(0,229,160,.08);}
-table{width:100%;border-collapse:collapse;}
+.table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+table{width:100%;border-collapse:collapse;min-width:700px;}
 thead th{padding:7px 9px;text-align:right;font-size:9px;color:var(--tx3);text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid var(--bdr);background:var(--s2);}
 thead th:first-child{text-align:left;}
 tbody tr{border-bottom:1px solid #0d1314;transition:background .1s;}
@@ -498,6 +499,7 @@ td{padding:7px 9px;text-align:right;font-size:11px;}td:first-child{text-align:le
 .cd{font-size:10px;color:var(--tx2);flex:1;}.ca{font-size:11px;color:var(--g);}
 .cs{font-size:8px;padding:2px 6px;border-radius:3px;margin-left:5px;flex-shrink:0;}
 .paid{background:rgba(0,229,160,.1);color:var(--g);border:1px solid rgba(0,229,160,.25);}
+.pend{background:rgba(255,183,77,.1);color:var(--am);border:1px solid rgba(255,183,77,.25);}
 .caltot{display:flex;justify-content:space-between;padding:8px 16px;background:var(--s2);border-top:1px solid var(--bdr2);font-size:10px;color:var(--tx2);}
 .caltot span{color:var(--g);font-family:var(--h);font-weight:700;}
 </style>
@@ -528,6 +530,7 @@ td{padding:7px 9px;text-align:right;font-size:11px;}td:first-child{text-align:le
   <div class="g2">
     <div class="card">
       <div class="ch"><span class="ct">Positions</span><span class="bdg">5 active · 4 watchlist</span></div>
+      <div class="table-scroll">
       <table>
         <thead><tr><th>Ticker</th><th>Shares</th><th>Price</th><th>Curr Val</th><th>P/L</th><th>Dividends</th><th>P/L+Div</th><th>Tot Ret%</th><th>Payback%</th><th>YTD Avg/Wk</th><th>Fcst/Wk</th><th>Div Yield%</th></tr></thead>
         <tbody>
@@ -543,6 +546,7 @@ td{padding:7px 9px;text-align:right;font-size:11px;}td:first-child{text-align:le
         </tbody>
         <tbody class="tft"><tr><td>Total</td><td colspan="2"></td><td>$55,032</td><td class="r">-$14,340</td><td class="g">$26,355</td><td class="g">+$12,015</td><td class="g">+17.3%</td><td class="g">38.0%</td><td></td><td class="g">$471.44</td><td></td></tr></tbody>
       </table>
+      </div>
       <div class="pb-section">
         <div class="pb-header"><span class="ct" style="font-size:11px;">Payback Progress</span>
           <div class="sort-btns">
@@ -608,6 +612,7 @@ td{padding:7px 9px;text-align:right;font-size:11px;}td:first-child{text-align:le
   <div class="g2">
     <div class="card">
       <div class="ch"><span class="ct">IRA Positions</span><span class="bdg">3 active</span></div>
+      <div class="table-scroll">
       <table>
         <thead><tr><th>Ticker</th><th>Shares</th><th>Price</th><th>Curr Val</th><th>P/L</th><th>Dividends</th><th>P/L+Div</th><th>Tot Ret%</th><th>Payback%</th><th>YTD Avg/Wk</th><th>Fcst/Wk</th><th>Div Yield%</th></tr></thead>
         <tbody>
@@ -617,6 +622,7 @@ td{padding:7px 9px;text-align:right;font-size:11px;}td:first-child{text-align:le
         </tbody>
         <tbody class="tft"><tr><td>IRA total</td><td colspan="2"></td><td>$11,358</td><td class="r">-$3,594</td><td class="g">$7,096</td><td class="g">+$3,501</td><td class="g">+23.4%</td><td class="g">47.5%</td><td></td><td class="g">$88.92</td><td></td></tr></tbody>
       </table>
+      </div>
       <div class="pb-section">
         <div class="pb-header"><span class="ct" style="font-size:11px;">Payback Progress</span>
           <div class="sort-btns">
@@ -673,10 +679,41 @@ td{padding:7px 9px;text-align:right;font-size:11px;}td:first-child{text-align:le
 
 <script>
 const pbData={indiv:[{tk:'NVDY',recv:10683,cost:25828,pct:41.4},{tk:'PLTY',recv:3020,cost:7719,pct:39.1},{tk:'LFGY',recv:3057,cost:8118,pct:37.7},{tk:'BABO',recv:6149,cost:16752,pct:36.7},{tk:'CHPY',recv:3447,cost:10955,pct:31.5}],ira:[{tk:'APLY',recv:1670,cost:5851,pct:28.5},{tk:'CONY',recv:3032,cost:4348,pct:69.7},{tk:'NVDY',recv:2393,cost:4753,pct:50.4}]};
-const calData={indiv:[{tk:'CHPY',date:'Thu May 7',ds:1,pps:'$0.6024/sh',amt:'+$120.48'},{tk:'LFGY',date:'Thu May 7',ds:1,pps:'$0.2513/sh',amt:'+$50.26'},{tk:'BABO',date:'Fri May 8',ds:2,pps:'$0.0924/sh',amt:'+$92.40'},{tk:'NVDY',date:'Fri May 8',ds:2,pps:'$0.1281/sh',amt:'+$192.15'},{tk:'PLTY',date:'Fri May 8',ds:2,pps:'$0.2708/sh',amt:'+$27.08'}],ira:[{tk:'APLY',date:'Fri May 8',ds:1,pps:'$0.1033/sh',amt:'+$46.49'},{tk:'CONY',date:'Fri May 8',ds:1,pps:'$0.4464/sh',amt:'+$24.55'},{tk:'NVDY',date:'Fri May 8',ds:1,pps:'$0.1281/sh',amt:'+$38.43'}]};
+// ── DYNAMIC CALENDAR DATA ───────────────────────────────────
+function getUpcomingDates() {
+  const now = new Date();
+  const day = now.getDay(); // 0=Sun,1=Mon,2=Tue,3=Wed,4=Thu,5=Fri,6=Sat
+  // Find the upcoming Wednesday (Group1 pay day = Thu)
+  const daysToWed = day <= 3 ? 3 - day : 10 - day;
+  const daysToThu = day <= 4 ? 4 - day : 11 - day;
+  const daysToFri = day <= 5 ? 5 - day : 12 - day;
+  const wed = new Date(now); wed.setDate(now.getDate() + daysToWed);
+  const thu = new Date(now); thu.setDate(now.getDate() + daysToThu);
+  const fri = new Date(now); fri.setDate(now.getDate() + daysToFri);
+  const fmt = d => d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+  const isPaid = d => d <= now;
+  return { wed, thu, fri, fmt, isPaid };
+}
+
+const { wed, thu, fri, fmt, isPaid } = getUpcomingDates();
+
+const calData = {
+  indiv: [
+    {tk:'CHPY', date:fmt(thu), paid:isPaid(thu), pps:'$0.6024/sh', amt:'+$120.48'},
+    {tk:'LFGY', date:fmt(thu), paid:isPaid(thu), pps:'$0.2513/sh', amt:'+$50.26'},
+    {tk:'BABO', date:fmt(fri), paid:isPaid(fri), pps:'$0.0924/sh', amt:'+$92.40'},
+    {tk:'NVDY', date:fmt(fri), paid:isPaid(fri), pps:'$0.1281/sh', amt:'+$192.15'},
+    {tk:'PLTY', date:fmt(fri), paid:isPaid(fri), pps:'$0.2708/sh', amt:'+$27.08'},
+  ],
+  ira: [
+    {tk:'APLY', date:fmt(fri), paid:isPaid(fri), pps:'$0.1033/sh', amt:'+$46.49'},
+    {tk:'CONY', date:fmt(fri), paid:isPaid(fri), pps:'$0.4464/sh', amt:'+$24.55'},
+    {tk:'NVDY', date:fmt(fri), paid:isPaid(fri), pps:'$0.1281/sh', amt:'+$38.43'},
+  ]
+};
 function renderPB(a,items){document.getElementById('pb-'+a).innerHTML=items.map(d=>'<div class="pb-col"><div style="display:flex;justify-content:space-between;align-items:baseline;"><span class="pb-tk">'+d.tk+'</span><span class="pb-pct">'+d.pct+'%</span></div><div class="pb-nums"><span>$'+d.recv.toLocaleString()+'</span><span>of $'+d.cost.toLocaleString()+'</span></div><div class="pb-track"><div class="pb-fill" style="width:'+d.pct+'%"></div></div></div>').join('');}
 function sortPB(a,mode,btn){btn.closest('.sort-btns').querySelectorAll('.sb').forEach(b=>b.classList.remove('active'));btn.classList.add('active');const items=[...pbData[a]];if(mode==='pct-desc')items.sort((a,b)=>b.pct-a.pct);else if(mode==='pct-asc')items.sort((a,b)=>a.pct-b.pct);else items.sort((a,b)=>a.tk.localeCompare(b.tk));renderPB(a,items);}
-function renderCal(a,items){document.getElementById('cal-'+a).innerHTML=items.map(d=>'<div class="cr"><span class="ctk">'+d.tk+'</span><span class="cd">'+d.date+' · '+d.pps+'</span><span class="ca">'+d.amt+'</span><span class="cs paid">PAID</span></div>').join('');}
+function renderCal(a,items){document.getElementById('cal-'+a).innerHTML=items.map(d=>'<div class="cr"><span class="ctk">'+d.tk+'</span><span class="cd">'+d.date+' · '+d.pps+'</span><span class="ca">'+d.amt+'</span><span class="cs '+(d.paid?'paid':'pend')+'">'+(d.paid?'PAID':'PENDING')+'</span></div>').join('');}
 function sortCal(a,mode,btn){btn.closest('.sort-btns').querySelectorAll('.sb').forEach(b=>b.classList.remove('active'));btn.classList.add('active');const items=[...calData[a]];if(mode==='date')items.sort((a,b)=>a.ds-b.ds||a.tk.localeCompare(b.tk));else items.sort((a,b)=>a.tk.localeCompare(b.tk));renderCal(a,items);}
 function drawTrend(id,pct){const s=document.getElementById(id);if(!s)return;const y=(1-pct/100)*100;s.innerHTML='<line x1="0" y1="'+y+'%" x2="100%" y2="'+y+'%" stroke="#ffb74d" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.75"/>';}
 function switchTab(n,el){document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));document.getElementById('panel-'+n).classList.add('on');el.classList.add('on');}
