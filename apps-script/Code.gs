@@ -13,7 +13,8 @@ function runWeeklyUpdate() {
     updateDividendTotals(ss, divs);
   }
   updatePrices(ss);
-  sendEmail(getDashboardHtml());
+  const avgs = getYtdAverages(ss);
+  sendEmail(getDashboardHtml(avgs));
   Logger.log('=== Done ===');
 }
 
@@ -51,8 +52,54 @@ function updateDividendTotals(ss, divs) {
       const total=(data[i][4]||0)+divs[tk]*data[i][1];
       sheet.getRange(i+1,5).setValue(total);
       Logger.log(`${tk} → $${total.toFixed(2)}`);
+      logYtdHistory(ss, tk, divs[tk]);
     }
   }
+}
+
+function logYtdHistory(ss, ticker, perShare) {
+  let hist = ss.getSheetByName('YTD History');
+  if (!hist) {
+    hist = ss.insertSheet('YTD History');
+    hist.appendRow(['Date','Ticker','Per Share']);
+    hist.getRange(1,1,1,3).setFontWeight('bold');
+  }
+  hist.appendRow([new Date(), ticker, perShare]);
+  Logger.log(`YTD History: ${ticker} $${perShare}/sh`);
+}
+
+function getYtdAverages(ss) {
+  // Seed with known 2026 history so averages work from day one
+  const seed = {
+    BABO: [0.0915,0.1166,0.0864,0.1277,0.1695,0.1190,0.1138,0.0965,0.0984,0.0908,0.0892,0.0928,0.0870,0.0866,0.0913,0.0906,0.0833,0.1012,0.0924],
+    CHPY: [0.5040,0.5196,0.5267,0.4826,0.5253,0.5293,0.5259,0.4686,0.4577,0.4384,0.3851,0.4912,0.4089,0.4406,0.5384,0.5008,0.6041,0.6024],
+    LFGY: [0.2885,0.2835,0.2822,0.2741,0.2353,0.2170,0.2294,0.2209,0.2356,0.2303,0.2369,0.2253,0.2033,0.2203,0.2356,0.2562,0.2228,0.2513],
+    NVDY: [0.1435,0.1054,0.0950,0.0848,0.1076,0.0939,0.1057,0.0944,0.1151,0.1162,0.1197,0.1332,0.1195,0.1148,0.1111,0.1161,0.1401,0.2072,0.1281],
+    PLTY: [0.5130,0.4508,0.4130,0.3791,0.3688,0.3591,0.3845,0.3865,0.3933,0.4781,0.7999,0.8018,0.4779,0.4497,0.4548,0.3556,0.3832,0.3607,0.2708],
+    CONY: [0.4342,0.4091,0.3965,0.2219,0.3089,0.2838,0.2556,0.2994,0.3177,0.3115,0.5942,0.6138,0.5332,0.3763,0.3767,0.3833,0.4161,0.5307,0.4464],
+    APLY: [0.0532,0.0481,0.0415,0.0473,0.0494,0.0584,0.1774,0.0498,0.0911,0.0649,0.0622,0.0471,0.0606,0.0617,0.0613,0.0717,0.0902,0.0958,0.1033],
+  };
+
+  // Merge with any new entries from YTD History sheet
+  const hist = ss.getSheetByName('YTD History');
+  if (hist) {
+    const data = hist.getDataRange().getValues();
+    const ytdStart = new Date('2026-05-09'); // only count new entries from when sheet was created
+    for (let i=1;i<data.length;i++) {
+      const date=new Date(data[i][0]), tk=data[i][1], pps=parseFloat(data[i][2]);
+      if (!tk||isNaN(pps)||date<ytdStart) continue;
+      if (!seed[tk]) seed[tk]=[];
+      seed[tk].push(pps);
+    }
+  }
+
+  // Compute averages
+  const avgs = {};
+  Object.keys(seed).forEach(tk => {
+    const arr = seed[tk];
+    avgs[tk] = arr.reduce((s,v)=>s+v,0) / arr.length;
+  });
+  return avgs;
 }
 
 function updatePrices(ss) {
@@ -66,7 +113,8 @@ function updatePrices(ss) {
 
 // ─── HELPERS ────────────────────────────────────────────────
 function kpi(label, value, sub, color) {
-  return `<td width="20%" style="padding:4px;vertical-align:top;">
+  const filled = Math.round(0);
+  return `<td width="20%" style="padding:4px;vertical-align:top;height:1px;">
     <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#2a2a2a;border:1px solid #444;border-radius:6px;height:100%;">
       <tr><td style="padding:12px;vertical-align:top;">
         <div style="color:#aaa;font-size:10px;font-family:Arial,sans-serif;text-transform:uppercase;margin-bottom:6px;">${label}</div>
@@ -102,7 +150,7 @@ function tableHeader(cols) {
 
 function pbBar(ticker, pct, recv, cost) {
   const filled = Math.round(pct);
-  return `<td style="padding:6px 4px;width:${100/5}%;vertical-align:top;">
+  return `<td style="padding:6px 4px;width:${100/5}%;vertical-align:top;height:1px;">
     <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#2a2a2a;border:1px solid #444;border-radius:6px;height:100%;">
       <tr><td style="padding:10px 12px;vertical-align:top;">
         <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
@@ -152,8 +200,16 @@ function sectionHeader(text) {
 }
 
 // ─── MAIN HTML ───────────────────────────────────────────────
-function getDashboardHtml() {
+function getDashboardHtml(avgs) {
   const today = Utilities.formatDate(new Date(),'America/Los_Angeles','MMM d, yyyy');
+
+  // Live YTD forecasts from averages
+  const shares = {BABO:1000,CHPY:200,LFGY:200,NVDY:1500,PLTY:100,APLY:450,CONY:55,NVDY_IRA:300};
+  const a = avgs || {};
+  const indivFcstWk  = Math.round((a.BABO||0.1013)*1000 + (a.CHPY||0.4972)*200 + (a.LFGY||0.2416)*200 + (a.NVDY||0.1185)*1500 + (a.PLTY||0.4463)*100);
+  const indivFcstMo  = Math.round(indivFcstWk * 4);
+  const iraFcstWk    = Math.round((a.APLY||0.0703)*450 + (a.CONY||0.3952)*55 + (a.NVDY||0.1185)*300);
+  const iraFcstMo    = Math.round(iraFcstWk * 4);
 
   const html = `<!DOCTYPE html>
 <html>
@@ -176,8 +232,8 @@ function getDashboardHtml() {
         ${kpi('Portfolio Value','$55,032','Cost: $69,372','')}
         ${kpi('Total Return','+$12,015','+17.3%','#4ade80')}
         ${kpi('Closed Positions','-$634','-0.4%','#f87171')}
-        ${kpi('Forecast / Week','$471','2026 YTD avg','#64b5f6')}
-        ${kpi('Forecast / Month','$1,886','2026 YTD avg','#ffd54f')}
+        ${kpi('Forecast / Week','$'+indivFcstWk,'2026 YTD avg','#64b5f6')}
+        ${kpi('Forecast / Month','$'+indivFcstMo,'2026 YTD avg','#ffd54f')}
       </tr>
     </table>
   </td></tr>
@@ -285,8 +341,8 @@ function getDashboardHtml() {
         ${kpi('IRA Value','$11,358','Cost: $14,952','')}
         ${kpi('Total Return','+$3,501','+23.4%','#4ade80')}
         ${kpi('Closed Positions','+$1,559','+4.1%','#4ade80')}
-        ${kpi('Forecast / Week','$89','2026 YTD avg','#64b5f6')}
-        ${kpi('Forecast / Month','$356','2026 YTD avg','#ffd54f')}
+        ${kpi('Forecast / Week','$'+iraFcstWk,'2026 YTD avg','#64b5f6')}
+        ${kpi('Forecast / Month','$'+iraFcstMo,'2026 YTD avg','#ffd54f')}
       </tr>
     </table>
   </td></tr>
@@ -406,13 +462,20 @@ function createTriggers() {
 
 // ─── WEB APP — serves interactive dashboard ─────────────────
 function doGet() {
-  const html = HtmlService.createHtmlOutput(getInteractiveDashboard());
+  const ss   = getOrCreateSheet();
+  const avgs = getYtdAverages(ss);
+  const html = HtmlService.createHtmlOutput(getInteractiveDashboard(avgs));
   html.setTitle('Dividend Portfolio');
   html.setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   return html;
 }
 
-function getInteractiveDashboard() {
+function getInteractiveDashboard(avgs) {
+  const a = avgs || {};
+  const indivFcstWk = Math.round((a.BABO||0.1013)*1000+(a.CHPY||0.4972)*200+(a.LFGY||0.2416)*200+(a.NVDY||0.1185)*1500+(a.PLTY||0.4463)*100);
+  const indivFcstMo = Math.round(indivFcstWk*4);
+  const iraFcstWk   = Math.round((a.APLY||0.0703)*450+(a.CONY||0.3952)*55+(a.NVDY||0.1185)*300);
+  const iraFcstMo   = Math.round(iraFcstWk*4);
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -524,8 +587,8 @@ td{padding:7px 9px;text-align:right;font-size:11px;}td:first-child{text-align:le
     <div class="kpi"><div class="kl">Portfolio Value</div><div class="kv">$55,032</div><div class="ks">Cost basis $69,372</div><div class="kn">Current positions only</div></div>
     <div class="kpi"><div class="kl">Total Return</div><div class="kv g">+$12,015</div><div class="ks">+17.3% on cost basis</div></div>
     <div class="kpi kp"><div class="kl">Total Return — Closed</div><div class="kv r">-$634</div><div class="ks">-0.4% all-time</div></div>
-    <div class="kpi kb"><div class="kl">Forecast / Week</div><div class="kv b">$471</div><div class="ks">2026 YTD avg × shares</div></div>
-    <div class="kpi ka"><div class="kl">Forecast / Month</div><div class="kv am">$1,886</div><div class="ks">2026 YTD avg × shares</div></div>
+    <div class="kpi kb"><div class="kl">Forecast / Week</div><div class="kv b">$${indivFcstWk}</div><div class="ks">2026 YTD avg × shares</div></div>
+    <div class="kpi ka"><div class="kl">Forecast / Month</div><div class="kv am">$${indivFcstMo}</div><div class="ks">2026 YTD avg × shares</div></div>
   </div>
   <div class="g2">
     <div class="card">
@@ -606,8 +669,8 @@ td{padding:7px 9px;text-align:right;font-size:11px;}td:first-child{text-align:le
     <div class="kpi"><div class="kl">IRA Value</div><div class="kv">$11,358</div><div class="ks">Cost basis $14,952</div></div>
     <div class="kpi"><div class="kl">Total Return</div><div class="kv g">+$3,501</div><div class="ks">+23.4%</div></div>
     <div class="kpi kp"><div class="kl">Total Return — Closed</div><div class="kv g">+$1,559</div><div class="ks">+4.1% all-time</div></div>
-    <div class="kpi kb"><div class="kl">Forecast / Week</div><div class="kv b">$89</div><div class="ks">2026 YTD avg × shares</div></div>
-    <div class="kpi ka"><div class="kl">Forecast / Month</div><div class="kv am">$356</div><div class="ks">2026 YTD avg × shares</div></div>
+    <div class="kpi kb"><div class="kl">Forecast / Week</div><div class="kv b">$${iraFcstWk}</div><div class="ks">2026 YTD avg × shares</div></div>
+    <div class="kpi ka"><div class="kl">Forecast / Month</div><div class="kv am">$${iraFcstMo}</div><div class="ks">2026 YTD avg × shares</div></div>
   </div>
   <div class="g2">
     <div class="card">
