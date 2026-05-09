@@ -102,84 +102,87 @@ function updatePrices(ss) {
 
 function getDashboardHtml() {
   const today = Utilities.formatDate(new Date(), 'America/Los_Angeles', 'MMM d, yyyy');
+
   let html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<style>
-:root{--bg:#080c0d;--s1:#0f1517;--s2:#141b1d;--s3:#1a2325;--bdr:#1f2d30;--g:#00e5a0;--b:#29b6f6;--am:#ffb74d;--rd:#ef5350;--tx:#cfe4e8;--tx2:#6e8f96;--tx3:#3d5a60;}
-body{background:var(--bg);color:var(--tx);font-family:monospace;font-size:12px;padding:20px;max-width:900px;margin:0 auto;}
-.kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px;}
-.kpi{background:var(--s1);border:1px solid var(--bdr);border-radius:9px;padding:14px 16px;}
-.kl{font-size:9px;color:var(--tx2);text-transform:uppercase;margin-bottom:7px;}
-.kv{font-size:20px;font-weight:bold;color:#fff;}
-.kv.g{color:var(--g);}.kv.r{color:var(--rd);}.kv.b{color:var(--b);}.kv.am{color:var(--am);}
-.ks{font-size:10px;color:var(--tx3);margin-top:4px;}
-.card{background:var(--s1);border:1px solid var(--bdr);border-radius:9px;margin-bottom:12px;overflow:hidden;}
-.ch{padding:12px 16px;border-bottom:1px solid var(--bdr);font-weight:bold;font-size:12px;}
-table{width:100%;border-collapse:collapse;}
-th{padding:7px 9px;text-align:right;font-size:9px;color:var(--tx3);border-bottom:1px solid var(--bdr);background:var(--s2);}
+<html>
+<head><meta charset="UTF-8"><style>
+body{font-family:Arial,sans-serif;background-color:#1a1a1a;color:#e0e0e0;padding:20px;margin:0;}
+.container{max-width:900px;margin:0 auto;}
+h2{color:#fff;text-align:center;margin:0 0 5px 0;}
+.date{color:#888;text-align:center;font-size:12px;margin-bottom:20px;}
+h3{color:#fff;margin:20px 0 10px 0;font-size:14px;}
+.kpi-row{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:15px;}
+.kpi{background-color:#2a2a2a;border:1px solid #333;padding:12px;border-radius:5px;}
+.kpi-label{color:#999;font-size:11px;text-transform:uppercase;margin-bottom:5px;}
+.kpi-value{color:#fff;font-size:18px;font-weight:bold;margin:5px 0;}
+.kpi-value.green{color:#4ade80;}
+.kpi-value.red{color:#f87171;}
+.kpi-sub{color:#999;font-size:10px;}
+table{width:100%;border-collapse:collapse;background-color:#2a2a2a;border:1px solid #333;margin-bottom:15px;}
+th{background-color:#1a1a1a;padding:10px;text-align:right;font-size:11px;color:#999;border-bottom:1px solid #333;font-weight:normal;}
 th:first-child{text-align:left;}
-td{padding:7px 9px;text-align:right;font-size:11px;}
+td{padding:10px;text-align:right;border-bottom:1px solid #333;font-size:12px;}
 td:first-child{text-align:left;}
-.g{color:var(--g);}.r{color:var(--rd);}
-.tft td{background:var(--s2);border-top:1px solid var(--bdr2);font-size:10px;color:var(--tx2);}
-h3{font-size:16px;color:#fff;margin:20px 0 10px;font-weight:bold;}
-</style>
-</head>
+.green{color:#4ade80;}
+.red{color:#f87171;}
+.total-row{background-color:#1a1a1a;border-top:2px solid #333;font-weight:bold;}
+.footer{text-align:center;color:#666;font-size:11px;margin-top:20px;}
+</style></head>
 <body>
-<div style="text-align:center;margin-bottom:20px;"><h2 style="margin:0;color:#fff;">Dividend Portfolio</h2><p style="color:var(--tx3);margin:5px 0 0;">Updated ${today}</p></div>
-`;
+<div class="container">
 
-  html += `<h3>INDIV</h3>
-<div class="kpis">
-  <div class="kpi"><div class="kl">Portfolio Value</div><div class="kv">$55,032</div><div class="ks">Cost $69,372</div></div>
-  <div class="kpi"><div class="kl">Total Return</div><div class="kv g">+$12,015</div><div class="ks">+17.3%</div></div>
-  <div class="kpi" style="background:#0f2218;"><div class="kl">Total Return — Closed</div><div class="kv r">-$634</div><div class="ks">-0.4%</div></div>
-  <div class="kpi"><div class="kl">Forecast / Week</div><div class="kv b">$471</div></div>
-  <div class="kpi"><div class="kl">Forecast / Month</div><div class="kv am">$1,886</div></div>
-</div>
-<div class="card">
-  <div class="ch">Positions (5 active)</div>
-  <table>
-    <thead><tr><th>Ticker</th><th>Shares</th><th>Price</th><th>Val</th><th>P/L</th><th>Divs</th><th>Ret%</th><th>PB%</th><th>Yield%</th></tr></thead>
-    <tbody>
-      <tr><td>BABO</td><td>1,000</td><td>$10.59</td><td>$10,590</td><td class="r">-$6,162</td><td class="g">$6,149</td><td class="r">-0.1%</td><td class="g">36.7%</td><td>49.7%</td></tr>
-      <tr><td>CHPY</td><td>200</td><td>$74.90</td><td>$14,980</td><td class="g">+$4,026</td><td class="g">$3,447</td><td class="g">+68.2%</td><td class="g">31.5%</td><td>34.5%</td></tr>
-      <tr><td>LFGY</td><td>200</td><td>$24.36</td><td>$4,872</td><td class="r">-$3,246</td><td class="g">$3,057</td><td class="r">-2.3%</td><td class="g">37.7%</td><td>51.6%</td></tr>
-      <tr><td>NVDY</td><td>1,500</td><td>$14.08</td><td>$21,120</td><td class="r">-$4,708</td><td class="g">$10,683</td><td class="g">+23.1%</td><td class="g">41.4%</td><td>43.8%</td></tr>
-      <tr><td>PLTY</td><td>100</td><td>$34.70</td><td>$3,470</td><td class="r">-$4,249</td><td class="g">$3,020</td><td class="r">-15.9%</td><td class="g">39.1%</td><td>66.9%</td></tr>
-    </tbody>
-    <tbody style="border-top:1px solid var(--bdr2);">
-      <tr style="background:var(--s2);"><td><strong>Total</strong></td><td colspan="2"></td><td>$55,032</td><td class="r">-$14,340</td><td class="g">$26,355</td><td class="g">+17.3%</td><td class="g">38.0%</td><td></td></tr>
-    </tbody>
-  </table>
+<h2>Dividend Portfolio</h2>
+<div class="date">Updated ${today}</div>
+
+<h3>INDIV Account</h3>
+
+<div class="kpi-row">
+  <div class="kpi"><div class="kpi-label">Portfolio Value</div><div class="kpi-value">$55,032</div><div class="kpi-sub">Cost: $69,372</div></div>
+  <div class="kpi"><div class="kpi-label">Total Return</div><div class="kpi-value green">+$12,015</div><div class="kpi-sub">+17.3%</div></div>
+  <div class="kpi"><div class="kpi-label">Return (Closed)</div><div class="kpi-value red">-$634</div><div class="kpi-sub">-0.4%</div></div>
+  <div class="kpi"><div class="kpi-label">Forecast/Week</div><div class="kpi-value" style="color:#64b5f6;">$471</div><div class="kpi-sub">2026 YTD avg</div></div>
+  <div class="kpi"><div class="kpi-label">Forecast/Month</div><div class="kpi-value" style="color:#ffd54f;">$1,886</div><div class="kpi-sub">2026 YTD avg</div></div>
 </div>
 
-<h3>IRA</h3>
-<div class="kpis">
-  <div class="kpi"><div class="kl">IRA Value</div><div class="kv">$11,358</div><div class="ks">Cost $14,952</div></div>
-  <div class="kpi"><div class="kl">Total Return</div><div class="kv g">+$3,501</div><div class="ks">+23.4%</div></div>
-  <div class="kpi" style="background:#0f2218;"><div class="kl">Total Return — Closed</div><div class="kv g">+$1,559</div><div class="ks">+4.1%</div></div>
-  <div class="kpi"><div class="kl">Forecast / Week</div><div class="kv b">$89</div></div>
-  <div class="kpi"><div class="kl">Forecast / Month</div><div class="kv am">$356</div></div>
-</div>
-<div class="card">
-  <div class="ch">IRA Positions (3 active)</div>
-  <table>
-    <thead><tr><th>Ticker</th><th>Shares</th><th>Price</th><th>Val</th><th>P/L</th><th>Divs</th><th>Ret%</th><th>PB%</th><th>Yield%</th></tr></thead>
-    <tbody>
-      <tr><td>APLY</td><td>450</td><td>$12.53</td><td>$5,638</td><td class="r">-$212</td><td class="g">$1,670</td><td class="g">+24.9%</td><td class="g">28.5%</td><td>29.2%</td></tr>
-      <tr><td>CONY</td><td>55</td><td>$27.19</td><td>$1,495</td><td class="r">-$2,853</td><td class="g">$3,032</td><td class="g">+4.1%</td><td class="g">69.7%</td><td>75.6%</td></tr>
-      <tr><td>NVDY</td><td>300</td><td>$14.08</td><td>$4,224</td><td class="r">-$529</td><td class="g">$2,393</td><td class="g">+39.2%</td><td class="g">50.4%</td><td>43.8%</td></tr>
-    </tbody>
-    <tbody style="border-top:1px solid var(--bdr2);">
-      <tr style="background:var(--s2);"><td><strong>Total</strong></td><td colspan="2"></td><td>$11,358</td><td class="r">-$3,594</td><td class="g">$7,096</td><td class="g">+23.4%</td><td class="g">47.5%</td><td></td></tr>
-    </tbody>
-  </table>
+<table>
+<thead><tr>
+  <th>Ticker</th><th>Shares</th><th>Price</th><th>Value</th><th>Dividends</th><th>Total Return</th><th>Return%</th><th>Payback%</th><th>Yield%</th>
+</tr></thead>
+<tbody>
+  <tr><td>BABO</td><td style="text-align:right;">1,000</td><td style="text-align:right;">$10.59</td><td style="text-align:right;">$10,590</td><td style="text-align:right;" class="green">$6,149</td><td style="text-align:right;" class="red">-$13</td><td style="text-align:right;" class="red">-0.1%</td><td style="text-align:right;" class="green">36.7%</td><td style="text-align:right;">49.7%</td></tr>
+  <tr><td>CHPY</td><td style="text-align:right;">200</td><td style="text-align:right;">$74.90</td><td style="text-align:right;">$14,980</td><td style="text-align:right;" class="green">$3,447</td><td style="text-align:right;" class="green">+$7,473</td><td style="text-align:right;" class="green">+68.2%</td><td style="text-align:right;" class="green">31.5%</td><td style="text-align:right;">34.5%</td></tr>
+  <tr><td>LFGY</td><td style="text-align:right;">200</td><td style="text-align:right;">$24.36</td><td style="text-align:right;">$4,872</td><td style="text-align:right;" class="green">$3,057</td><td style="text-align:right;" class="red">-$189</td><td style="text-align:right;" class="red">-2.3%</td><td style="text-align:right;" class="green">37.7%</td><td style="text-align:right;">51.6%</td></tr>
+  <tr><td>NVDY</td><td style="text-align:right;">1,500</td><td style="text-align:right;">$14.08</td><td style="text-align:right;">$21,120</td><td style="text-align:right;" class="green">$10,683</td><td style="text-align:right;" class="green">+$5,975</td><td style="text-align:right;" class="green">+23.1%</td><td style="text-align:right;" class="green">41.4%</td><td style="text-align:right;">43.8%</td></tr>
+  <tr><td>PLTY</td><td style="text-align:right;">100</td><td style="text-align:right;">$34.70</td><td style="text-align:right;">$3,470</td><td style="text-align:right;" class="green">$3,020</td><td style="text-align:right;" class="red">-$1,229</td><td style="text-align:right;" class="red">-15.9%</td><td style="text-align:right;" class="green">39.1%</td><td style="text-align:right;">66.9%</td></tr>
+  <tr class="total-row"><td>Total</td><td></td><td></td><td style="text-align:right;">$55,032</td><td style="text-align:right;" class="green">$26,355</td><td style="text-align:right;" class="green">+$12,015</td><td style="text-align:right;" class="green">+17.3%</td><td style="text-align:right;" class="green">38.0%</td><td></td></tr>
+</tbody>
+</table>
+
+<h3>IRA Account</h3>
+
+<div class="kpi-row">
+  <div class="kpi"><div class="kpi-label">IRA Value</div><div class="kpi-value">$11,358</div><div class="kpi-sub">Cost: $14,952</div></div>
+  <div class="kpi"><div class="kpi-label">Total Return</div><div class="kpi-value green">+$3,501</div><div class="kpi-sub">+23.4%</div></div>
+  <div class="kpi"><div class="kpi-label">Return (Closed)</div><div class="kpi-value green">+$1,559</div><div class="kpi-sub">+4.1%</div></div>
+  <div class="kpi"><div class="kpi-label">Forecast/Week</div><div class="kpi-value" style="color:#64b5f6;">$89</div><div class="kpi-sub">2026 YTD avg</div></div>
+  <div class="kpi"><div class="kpi-label">Forecast/Month</div><div class="kpi-value" style="color:#ffd54f;">$356</div><div class="kpi-sub">2026 YTD avg</div></div>
 </div>
 
-<p style="text-align:center;color:var(--tx3);font-size:10px;margin-top:20px;">Auto-generated by Dividend Tracker</p>
+<table>
+<thead><tr>
+  <th>Ticker</th><th>Shares</th><th>Price</th><th>Value</th><th>Dividends</th><th>Total Return</th><th>Return%</th><th>Payback%</th><th>Yield%</th>
+</tr></thead>
+<tbody>
+  <tr><td>APLY</td><td style="text-align:right;">450</td><td style="text-align:right;">$12.53</td><td style="text-align:right;">$5,638</td><td style="text-align:right;" class="green">$1,670</td><td style="text-align:right;" class="green">+$1,458</td><td style="text-align:right;" class="green">+24.9%</td><td style="text-align:right;" class="green">28.5%</td><td style="text-align:right;">29.2%</td></tr>
+  <tr><td>CONY</td><td style="text-align:right;">55</td><td style="text-align:right;">$27.19</td><td style="text-align:right;">$1,495</td><td style="text-align:right;" class="green">$3,032</td><td style="text-align:right;" class="green">+$180</td><td style="text-align:right;" class="green">+4.1%</td><td style="text-align:right;" class="green">69.7%</td><td style="text-align:right;">75.6%</td></tr>
+  <tr><td>NVDY</td><td style="text-align:right;">300</td><td style="text-align:right;">$14.08</td><td style="text-align:right;">$4,224</td><td style="text-align:right;" class="green">$2,393</td><td style="text-align:right;" class="green">+$1,864</td><td style="text-align:right;" class="green">+39.2%</td><td style="text-align:right;" class="green">50.4%</td><td style="text-align:right;">43.8%</td></tr>
+  <tr class="total-row"><td>Total</td><td></td><td></td><td style="text-align:right;">$11,358</td><td style="text-align:right;" class="green">$7,096</td><td style="text-align:right;" class="green">+$3,501</td><td style="text-align:right;" class="green">+23.4%</td><td style="text-align:right;" class="green">47.5%</td><td></td></tr>
+</tbody>
+</table>
+
+<div class="footer">Auto-generated by Dividend Tracker • github.com/nickt8r/dividend-tracker</div>
+
+</div>
 </body>
 </html>`;
 
