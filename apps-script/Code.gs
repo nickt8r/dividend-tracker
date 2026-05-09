@@ -513,7 +513,9 @@ body{background:var(--bg);color:var(--tx);font-family:var(--f);font-size:12px;mi
 .sort-btns{display:flex;gap:4px;}
 .sb{padding:3px 8px;border-radius:4px;font-family:var(--f);font-size:9px;border:1px solid var(--bdr2);color:var(--tx3);background:transparent;cursor:pointer;transition:all .15s;}
 .sb:hover{border-color:var(--tx2);color:var(--tx2);}.sb.active{border-color:var(--g);color:var(--g);background:rgba(0,229,160,.08);}
-.table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+.card{background:var(--s1);border:1px solid var(--bdr);border-radius:9px;overflow:visible;}
+.card>.ch{border-radius:9px 9px 0 0;}
+.table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:0;}
 table{width:100%;border-collapse:collapse;min-width:700px;}
 thead th{padding:7px 9px;text-align:right;font-size:9px;color:var(--tx3);text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid var(--bdr);background:var(--s2);}
 thead th:first-child{text-align:left;}
