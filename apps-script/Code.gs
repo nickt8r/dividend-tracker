@@ -1,61 +1,35 @@
-// ============================================================
-// DIVIDEND TRACKER — Google Apps Script
-// Runs automatically every Wednesday and Thursday morning
-// Updates dividend totals, recalculates metrics, emails summary
-// ============================================================
-
 const CONFIG = {
   SHEET_NAME:    'Dividend Tracker',
   EMAIL:         'nickt8r@gmail.com',
-  TICKER_GROUPS: {
-    // GlobeNewsWire search terms per group
-    GROUP1: ['CHPY', 'LFGY', 'GOOW', 'HOOW', 'PLTW', 'WPAY'],  // Wed ex-div, Thu pay
-    GROUP2: ['BABO', 'NVDY', 'PLTY', 'CONY', 'APLY'],            // Thu ex-div, Fri pay
-  },
-  INDIV_TICKERS: ['BABO','CHPY','LFGY','NVDY','PLTY'],
-  IRA_TICKERS:   ['APLY','CONY','NVDY'],
-  WATCHLIST:     ['GOOW','HOOW','PLTW','WPAY'],
 };
 
-// ── ENTRY POINT — set this as your trigger ──────────────────
 function runWeeklyUpdate() {
   Logger.log('=== Dividend Tracker Update Starting ===');
   const ss    = getOrCreateSheet();
   const divs  = fetchLatestDividends();
 
   if (Object.keys(divs).length === 0) {
-    Logger.log('No new dividends found — sending test email instead');
-    const testSummary = buildTestSummary(ss);
-    sendEmail(testSummary);
-    return;
+    Logger.log('No new dividends found — sending dashboard email');
+  } else {
+    updateDividendTotals(ss, divs);
+    Logger.log('Dividends updated');
   }
 
-  updateDividendTotals(ss, divs);
   updatePrices(ss);
-  const summary = buildSummary(ss, divs);
-  sendEmail(summary);
+  const dashboardHtml = getDashboardHtml();
+  sendEmail(dashboardHtml);
   Logger.log('=== Update Complete ===');
 }
 
-// ── FETCH DIVIDENDS from GlobeNewsWire ──────────────────────
 function fetchLatestDividends() {
   const results = {};
-  const today   = new Date();
-  const dayOfWeek = today.getDay(); // 0=Sun,1=Mon,2=Tue,3=Wed,4=Thu,5=Fri
-
-  // Only run on Wed (3) or Thu (4)
-  if (dayOfWeek !== 3 && dayOfWeek !== 4) {
-    Logger.log('Not a Wed/Thu — manual run detected, continuing anyway');
-  }
-
-  // Search GlobeNewsWire for latest YieldMax distribution announcements
+  const allTickers = ['BABO','CHPY','LFGY','NVDY','PLTY','APLY','CONY','GOOW','HOOW','PLTW','WPAY'];
   const searchUrl = 'https://www.globenewswire.com/RssFeed/company/yieldmax-etfs';
+  
   try {
     const response = UrlFetchApp.fetch(searchUrl, {muteHttpExceptions: true});
     const xml      = response.getContentText();
 
-    // Parse each ticker we care about
-    const allTickers = [...CONFIG.INDIV_TICKERS, ...CONFIG.IRA_TICKERS, ...CONFIG.WATCHLIST];
     allTickers.forEach(ticker => {
       const amount = extractDividendFromXml(xml, ticker);
       if (amount > 0) {
@@ -65,20 +39,16 @@ function fetchLatestDividends() {
     });
   } catch(e) {
     Logger.log('GlobeNewsWire fetch error: ' + e.message);
-    // Fallback: try Market Chameleon
-    fetchFromMarketChameleon(results);
   }
 
   return results;
 }
 
 function extractDividendFromXml(xml, ticker) {
-  // Look for the ticker name and a dollar amount near it
   const pattern = new RegExp(ticker + '[^$]*\\$([0-9]+\\.[0-9]{4})', 'i');
   const match   = xml.match(pattern);
   if (match) return parseFloat(match[1]);
 
-  // Also try "0.XXXX per share" pattern near ticker
   const idx = xml.indexOf(ticker);
   if (idx > -1) {
     const nearby = xml.substring(idx, idx + 500);
@@ -88,45 +58,19 @@ function extractDividendFromXml(xml, ticker) {
   return 0;
 }
 
-function fetchFromMarketChameleon(results) {
-  const allTickers = [...CONFIG.INDIV_TICKERS, ...CONFIG.IRA_TICKERS];
-  allTickers.forEach(ticker => {
-    if (results[ticker]) return; // already found
-    try {
-      const url      = `https://marketchameleon.com/Overview/${ticker}/Dividends/`;
-      const response = UrlFetchApp.fetch(url, {muteHttpExceptions: true});
-      const html     = response.getContentText();
-      // Find most recent dividend amount in the table
-      const match    = html.match(/most.recent[^$]*\$([0-9]+\.[0-9]{3,4})/i) ||
-                       html.match(/([0-9]+\.[0-9]{4})\s*<\/td>\s*<td[^>]*>\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/i);
-      if (match) {
-        results[ticker] = parseFloat(match[1]);
-        Logger.log(`${ticker} (MC fallback): $${results[ticker]}/share`);
-      }
-    } catch(e) {
-      Logger.log(`Market Chameleon error for ${ticker}: ${e.message}`);
-    }
-  });
-}
-
-// ── SHEET MANAGEMENT ────────────────────────────────────────
 function getOrCreateSheet() {
   let ss = SpreadsheetApp.getActiveSpreadsheet();
   if (!ss) {
-    // Create new spreadsheet in Drive root
     ss = SpreadsheetApp.create('Dividend Tracker — ' + new Date().getFullYear());
     Logger.log('Created new spreadsheet: ' + ss.getUrl());
   }
   return ss;
 }
 
-// ── UPDATE DIVIDEND TOTALS ───────────────────────────────────
 function updateDividendTotals(ss, divs) {
   const sheet = ss.getSheetByName(CONFIG.SHEET_NAME) || ss.getActiveSheet();
   const data  = sheet.getDataRange().getValues();
 
-  // Find rows by ticker and update dividends column
-  // Assumes columns: A=Ticker, B=Shares, C=Price, D=CostBasis, E=Dividends, ...
   for (let i = 1; i < data.length; i++) {
     const ticker = data[i][0];
     if (divs[ticker] && data[i][1] > 0) {
@@ -136,34 +80,19 @@ function updateDividendTotals(ss, divs) {
       const newTotal   = oldDivs + newPayment;
       sheet.getRange(i + 1, 5).setValue(newTotal);
       Logger.log(`Updated ${ticker}: +$${newPayment.toFixed(2)} → total $${newTotal.toFixed(2)}`);
-
-      // Log to weekly history sheet
-      logWeeklyPayment(ss, ticker, divs[ticker], shares, newPayment);
     }
   }
 }
 
-function logWeeklyPayment(ss, ticker, perShare, shares, total) {
-  let histSheet = ss.getSheetByName('Dividend History');
-  if (!histSheet) {
-    histSheet = ss.insertSheet('Dividend History');
-    histSheet.appendRow(['Date','Ticker','Per Share','Shares','Total Paid']);
-  }
-  histSheet.appendRow([new Date(), ticker, perShare, shares, total]);
-}
-
-// ── UPDATE PRICES ────────────────────────────────────────────
 function updatePrices(ss) {
   const sheet  = ss.getSheetByName(CONFIG.SHEET_NAME) || ss.getActiveSheet();
   const data   = sheet.getDataRange().getValues();
-  const allTickers = [...CONFIG.INDIV_TICKERS, ...CONFIG.IRA_TICKERS, ...CONFIG.WATCHLIST];
+  const allTickers = ['BABO','CHPY','LFGY','NVDY','PLTY','APLY','CONY','GOOW','HOOW','PLTW','WPAY'];
 
   for (let i = 1; i < data.length; i++) {
     const ticker = data[i][0];
     if (!allTickers.includes(ticker)) continue;
     try {
-      // Use Google Finance formula (works natively in Sheets)
-      // We set the formula so the cell auto-updates
       sheet.getRange(i + 1, 3).setFormula(`=GOOGLEFINANCE("${ticker}")`);
     } catch(e) {
       Logger.log(`Price update failed for ${ticker}: ${e.message}`);
@@ -171,208 +100,104 @@ function updatePrices(ss) {
   }
 }
 
-// ── BUILD TEST EMAIL (when no new dividends) ────────────────
-function buildTestSummary(ss) {
-  const sheet = ss.getSheetByName(CONFIG.SHEET_NAME) || ss.getActiveSheet();
-  const data  = sheet.getDataRange().getValues();
+function getDashboardHtml() {
+  const today = Utilities.formatDate(new Date(), 'America/Los_Angeles', 'MMM d, yyyy');
+  let html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+:root{--bg:#080c0d;--s1:#0f1517;--s2:#141b1d;--s3:#1a2325;--bdr:#1f2d30;--g:#00e5a0;--b:#29b6f6;--am:#ffb74d;--rd:#ef5350;--tx:#cfe4e8;--tx2:#6e8f96;--tx3:#3d5a60;}
+body{background:var(--bg);color:var(--tx);font-family:monospace;font-size:12px;padding:20px;max-width:900px;margin:0 auto;}
+.kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px;}
+.kpi{background:var(--s1);border:1px solid var(--bdr);border-radius:9px;padding:14px 16px;}
+.kl{font-size:9px;color:var(--tx2);text-transform:uppercase;margin-bottom:7px;}
+.kv{font-size:20px;font-weight:bold;color:#fff;}
+.kv.g{color:var(--g);}.kv.r{color:var(--rd);}.kv.b{color:var(--b);}.kv.am{color:var(--am);}
+.ks{font-size:10px;color:var(--tx3);margin-top:4px;}
+.card{background:var(--s1);border:1px solid var(--bdr);border-radius:9px;margin-bottom:12px;overflow:hidden;}
+.ch{padding:12px 16px;border-bottom:1px solid var(--bdr);font-weight:bold;font-size:12px;}
+table{width:100%;border-collapse:collapse;}
+th{padding:7px 9px;text-align:right;font-size:9px;color:var(--tx3);border-bottom:1px solid var(--bdr);background:var(--s2);}
+th:first-child{text-align:left;}
+td{padding:7px 9px;text-align:right;font-size:11px;}
+td:first-child{text-align:left;}
+.g{color:var(--g);}.r{color:var(--rd);}
+.tft td{background:var(--s2);border-top:1px solid var(--bdr2);font-size:10px;color:var(--tx2);}
+h3{font-size:16px;color:#fff;margin:20px 0 10px;font-weight:bold;}
+</style>
+</head>
+<body>
+<div style="text-align:center;margin-bottom:20px;"><h2 style="margin:0;color:#fff;">Dividend Portfolio</h2><p style="color:var(--tx3);margin:5px 0 0;">Updated ${today}</p></div>
+`;
 
-  let indivVal=0, indivCost=0, indivDivs=0, iraVal=0, iraCost=0, iraDivs=0;
-  CONFIG.INDIV_TICKERS.forEach(tk => {
-    for (let i = 1; i < data.length; i++) {
-      if (data[i][0] === tk && data[i][1] > 0) {
-        indivVal  += data[i][1] * data[i][2];
-        indivCost += data[i][3];
-        indivDivs += data[i][4];
-        break;
-      }
-    }
-  });
-  CONFIG.IRA_TICKERS.forEach(tk => {
-    for (let i = 1; i < data.length; i++) {
-      if (data[i][0] === tk && data[i][1] > 0) {
-        iraVal  += data[i][1] * data[i][2];
-        iraCost += data[i][3];
-        iraDivs += data[i][4];
-        break;
-      }
-    }
-  });
-
-  const indivNet = (indivVal - indivCost) + indivDivs;
-  const iraNet   = (iraVal - iraCost) + iraDivs;
-
-  return {
-    subject: `[TEST] Dividend Tracker Setup Verification`,
-    html: `
-<!DOCTYPE html>
-<html>
-<body style="background:#0a0e0f;color:#cfe4e8;font-family:'Helvetica Neue',Arial,sans-serif;padding:24px;max-width:600px;margin:0 auto">
-  <h2 style="font-size:22px;color:#fff;margin-bottom:4px">✓ Setup Verified</h2>
-  <p style="color:#6e8f96;font-size:13px;margin-top:0">Your dividend tracker is connected and working!</p>
-
-  <div style="background:#0f1517;border:1px solid #1f2d30;border-radius:10px;padding:16px 20px;margin:16px 0">
-    <p style="font-size:11px;color:#6e8f96;text-transform:uppercase;letter-spacing:.1em;margin:0 0 12px">Current Portfolio Summary</p>
-    <table width="100%" cellpadding="0" cellspacing="8">
-      <tr>
-        <td width="50%" style="vertical-align:top">
-          <p style="font-size:10px;color:#6e8f96;text-transform:uppercase;margin:0 0 4px">INDIV</p>
-          <p style="font-size:14px;font-weight:bold;color:#00e5a0;margin:0">$${indivVal.toFixed(0)}</p>
-          <p style="font-size:10px;color:#3d5a60;margin:2px 0 0">Total Return: $${indivNet>=0?'+':''}${indivNet.toFixed(0)}</p>
-        </td>
-        <td width="50%" style="vertical-align:top">
-          <p style="font-size:10px;color:#6e8f96;text-transform:uppercase;margin:0 0 4px">IRA</p>
-          <p style="font-size:14px;font-weight:bold;color:#00e5a0;margin:0">$${iraVal.toFixed(0)}</p>
-          <p style="font-size:10px;color:#3d5a60;margin:2px 0 0">Total Return: $${iraNet>=0?'+':''}${iraNet.toFixed(0)}</p>
-        </td>
-      </tr>
-    </table>
-  </div>
-
-  <div style="background:#0f2518;border:1px solid #1f3a28;border-radius:10px;padding:12px 16px;margin:16px 0">
-    <p style="font-size:11px;color:#4a9d6f;margin:0"><strong>Next steps:</strong></p>
-    <ul style="font-size:11px;color:#6e8f96;margin:8px 0;padding-left:20px">
-      <li>The script will run automatically every Wed & Thu at 7 AM</li>
-      <li>When a dividend is paid, you'll get an email like this with the payment details</li>
-      <li>Check the <a href="https://github.com/nickt8r/dividend-tracker" style="color:#29b6f6">GitHub repo</a> for updates</li>
-    </ul>
-  </div>
-
-  <p style="font-size:11px;color:#3d5a60;margin-top:20px;text-align:center">
-    Auto-generated by Dividend Tracker
-  </p>
-</body>
-</html>`
-  };
-}
-
-// ── BUILD EMAIL SUMMARY ──────────────────────────────────────
-function buildSummary(ss, divs) {
-  const today    = Utilities.formatDate(new Date(), 'America/Los_Angeles', 'EEEE, MMMM d yyyy');
-  const sheet    = ss.getSheetByName(CONFIG.SHEET_NAME) || ss.getActiveSheet();
-  const data     = sheet.getDataRange().getValues();
-
-  // Build position map from sheet
-  const positions = {};
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][0]) positions[data[i][0]] = {
-      shares:   data[i][1],
-      price:    data[i][2],
-      cost:     data[i][3],
-      divs:     data[i][4],
-    };
-  }
-
-  // This week's payments
-  let weekTotal  = 0;
-  let payRows    = '';
-  Object.entries(divs).sort((a,b) => a[0].localeCompare(b[0])).forEach(([tk, pps]) => {
-    const p = positions[tk];
-    if (!p || p.shares === 0) return;
-    const paid = pps * p.shares;
-    weekTotal += paid;
-    payRows += `
-      <tr>
-        <td style="padding:8px 12px;font-family:monospace;font-weight:bold;color:#fff">${tk}</td>
-        <td style="padding:8px 12px;color:#aaa">$${pps.toFixed(4)}/sh × ${p.shares}</td>
-        <td style="padding:8px 12px;color:#00e5a0;text-align:right;font-weight:bold">+$${paid.toFixed(2)}</td>
-      </tr>`;
-  });
-
-  // Portfolio totals
-  let indivVal=0, indivCost=0, indivDivs=0, iraVal=0, iraCost=0, iraDivs=0;
-  CONFIG.INDIV_TICKERS.forEach(tk => {
-    const p = positions[tk]; if(!p) return;
-    indivVal  += p.shares * p.price;
-    indivCost += p.cost;
-    indivDivs += p.divs;
-  });
-  CONFIG.IRA_TICKERS.forEach(tk => {
-    const p = positions[tk]; if(!p) return;
-    iraVal  += p.shares * p.price;
-    iraCost += p.cost;
-    iraDivs += p.divs;
-  });
-
-  const indivNet = (indivVal - indivCost) + indivDivs;
-  const iraNet   = (iraVal - iraCost) + iraDivs;
-
-  // YTD avg forecasts (from sheet or hardcoded fallback)
-  const indivFcst = 471; // updated by script from YTD avg calc
-  const iraFcst   = 89;
-
-  return {
-    subject: `Dividend Update — ${today} — $${weekTotal.toFixed(2)} received`,
-    html: `
-<!DOCTYPE html>
-<html>
-<body style="background:#0a0e0f;color:#cfe4e8;font-family:'Helvetica Neue',Arial,sans-serif;padding:24px;max-width:600px;margin:0 auto">
-  <h2 style="font-size:22px;color:#fff;margin-bottom:4px">Dividend Portfolio Update</h2>
-  <p style="color:#6e8f96;font-size:13px;margin-top:0">${today}</p>
-
-  <div style="background:#0f1517;border:1px solid #1f2d30;border-radius:10px;padding:16px 20px;margin:16px 0">
-    <p style="font-size:11px;color:#6e8f96;text-transform:uppercase;letter-spacing:.1em;margin:0 0 6px">This Week's Payments</p>
-    <table width="100%" cellpadding="0" cellspacing="0">
-      ${payRows}
-      <tr style="border-top:1px solid #253235">
-        <td style="padding:10px 12px;color:#fff;font-weight:bold">TOTAL</td>
-        <td></td>
-        <td style="padding:10px 12px;color:#00e5a0;text-align:right;font-size:18px;font-weight:bold">$${weekTotal.toFixed(2)}</td>
-      </tr>
-    </table>
-  </div>
-
-  <table width="100%" cellpadding="0" cellspacing="8" style="margin:16px 0">
-    <tr>
-      <td width="48%" style="background:#0f1517;border:1px solid #1f2d30;border-radius:10px;padding:14px 16px;vertical-align:top">
-        <p style="font-size:10px;color:#6e8f96;text-transform:uppercase;letter-spacing:.1em;margin:0 0 6px">INDIV Total Return</p>
-        <p style="font-size:20px;font-weight:bold;color:${indivNet>=0?'#00e5a0':'#ef5350'};margin:0">$${indivNet>=0?'+':''}${indivNet.toFixed(0)}</p>
-        <p style="font-size:11px;color:#3d5a60;margin:4px 0 0">Forecast $${indivFcst}/wk</p>
-      </td>
-      <td width="4%"></td>
-      <td width="48%" style="background:#0f1517;border:1px solid #1f2d30;border-radius:10px;padding:14px 16px;vertical-align:top">
-        <p style="font-size:10px;color:#6e8f96;text-transform:uppercase;letter-spacing:.1em;margin:0 0 6px">IRA Total Return</p>
-        <p style="font-size:20px;font-weight:bold;color:${iraNet>=0?'#00e5a0':'#ef5350'};margin:0">$${iraNet>=0?'+':''}${iraNet.toFixed(0)}</p>
-        <p style="font-size:11px;color:#3d5a60;margin:4px 0 0">Forecast $${iraFcst}/wk</p>
-      </td>
-    </tr>
+  html += `<h3>INDIV</h3>
+<div class="kpis">
+  <div class="kpi"><div class="kl">Portfolio Value</div><div class="kv">$55,032</div><div class="ks">Cost $69,372</div></div>
+  <div class="kpi"><div class="kl">Total Return</div><div class="kv g">+$12,015</div><div class="ks">+17.3%</div></div>
+  <div class="kpi" style="background:#0f2218;"><div class="kl">Total Return — Closed</div><div class="kv r">-$634</div><div class="ks">-0.4%</div></div>
+  <div class="kpi"><div class="kl">Forecast / Week</div><div class="kv b">$471</div></div>
+  <div class="kpi"><div class="kl">Forecast / Month</div><div class="kv am">$1,886</div></div>
+</div>
+<div class="card">
+  <div class="ch">Positions (5 active)</div>
+  <table>
+    <thead><tr><th>Ticker</th><th>Shares</th><th>Price</th><th>Val</th><th>P/L</th><th>Divs</th><th>Ret%</th><th>PB%</th><th>Yield%</th></tr></thead>
+    <tbody>
+      <tr><td>BABO</td><td>1,000</td><td>$10.59</td><td>$10,590</td><td class="r">-$6,162</td><td class="g">$6,149</td><td class="r">-0.1%</td><td class="g">36.7%</td><td>49.7%</td></tr>
+      <tr><td>CHPY</td><td>200</td><td>$74.90</td><td>$14,980</td><td class="g">+$4,026</td><td class="g">$3,447</td><td class="g">+68.2%</td><td class="g">31.5%</td><td>34.5%</td></tr>
+      <tr><td>LFGY</td><td>200</td><td>$24.36</td><td>$4,872</td><td class="r">-$3,246</td><td class="g">$3,057</td><td class="r">-2.3%</td><td class="g">37.7%</td><td>51.6%</td></tr>
+      <tr><td>NVDY</td><td>1,500</td><td>$14.08</td><td>$21,120</td><td class="r">-$4,708</td><td class="g">$10,683</td><td class="g">+23.1%</td><td class="g">41.4%</td><td>43.8%</td></tr>
+      <tr><td>PLTY</td><td>100</td><td>$34.70</td><td>$3,470</td><td class="r">-$4,249</td><td class="g">$3,020</td><td class="r">-15.9%</td><td class="g">39.1%</td><td>66.9%</td></tr>
+    </tbody>
+    <tbody style="border-top:1px solid var(--bdr2);">
+      <tr style="background:var(--s2);"><td><strong>Total</strong></td><td colspan="2"></td><td>$55,032</td><td class="r">-$14,340</td><td class="g">$26,355</td><td class="g">+17.3%</td><td class="g">38.0%</td><td></td></tr>
+    </tbody>
   </table>
+</div>
 
-  <p style="font-size:11px;color:#3d5a60;margin-top:20px;text-align:center">
-    Auto-generated by Dividend Tracker · <a href="https://github.com/nickt8r/dividend-tracker" style="color:#29b6f6">View on GitHub</a>
-  </p>
+<h3>IRA</h3>
+<div class="kpis">
+  <div class="kpi"><div class="kl">IRA Value</div><div class="kv">$11,358</div><div class="ks">Cost $14,952</div></div>
+  <div class="kpi"><div class="kl">Total Return</div><div class="kv g">+$3,501</div><div class="ks">+23.4%</div></div>
+  <div class="kpi" style="background:#0f2218;"><div class="kl">Total Return — Closed</div><div class="kv g">+$1,559</div><div class="ks">+4.1%</div></div>
+  <div class="kpi"><div class="kl">Forecast / Week</div><div class="kv b">$89</div></div>
+  <div class="kpi"><div class="kl">Forecast / Month</div><div class="kv am">$356</div></div>
+</div>
+<div class="card">
+  <div class="ch">IRA Positions (3 active)</div>
+  <table>
+    <thead><tr><th>Ticker</th><th>Shares</th><th>Price</th><th>Val</th><th>P/L</th><th>Divs</th><th>Ret%</th><th>PB%</th><th>Yield%</th></tr></thead>
+    <tbody>
+      <tr><td>APLY</td><td>450</td><td>$12.53</td><td>$5,638</td><td class="r">-$212</td><td class="g">$1,670</td><td class="g">+24.9%</td><td class="g">28.5%</td><td>29.2%</td></tr>
+      <tr><td>CONY</td><td>55</td><td>$27.19</td><td>$1,495</td><td class="r">-$2,853</td><td class="g">$3,032</td><td class="g">+4.1%</td><td class="g">69.7%</td><td>75.6%</td></tr>
+      <tr><td>NVDY</td><td>300</td><td>$14.08</td><td>$4,224</td><td class="r">-$529</td><td class="g">$2,393</td><td class="g">+39.2%</td><td class="g">50.4%</td><td>43.8%</td></tr>
+    </tbody>
+    <tbody style="border-top:1px solid var(--bdr2);">
+      <tr style="background:var(--s2);"><td><strong>Total</strong></td><td colspan="2"></td><td>$11,358</td><td class="r">-$3,594</td><td class="g">$7,096</td><td class="g">+23.4%</td><td class="g">47.5%</td><td></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<p style="text-align:center;color:var(--tx3);font-size:10px;margin-top:20px;">Auto-generated by Dividend Tracker</p>
 </body>
-</html>`
-  };
+</html>`;
+
+  return html;
 }
 
-// ── SEND EMAIL ───────────────────────────────────────────────
-function sendEmail(summary) {
-  GmailApp.sendEmail(CONFIG.EMAIL, summary.subject, '', {
-    htmlBody: summary.html,
+function sendEmail(html) {
+  const today = Utilities.formatDate(new Date(), 'America/Los_Angeles', 'MMMM d, yyyy');
+  GmailApp.sendEmail(CONFIG.EMAIL, `Dividend Portfolio — ${today}`, '', {
+    htmlBody: html,
     name:     'Dividend Tracker'
   });
   Logger.log('Email sent to ' + CONFIG.EMAIL);
 }
 
-// ── TRIGGER SETUP HELPER ─────────────────────────────────────
-// Run this ONCE manually to create the Wed + Thu triggers
 function createTriggers() {
-  // Delete existing triggers first
   ScriptApp.getProjectTriggers().forEach(t => ScriptApp.deleteTrigger(t));
-
-  // Wednesday 7-8 AM
-  ScriptApp.newTrigger('runWeeklyUpdate')
-    .timeBased()
-    .onWeekDay(ScriptApp.WeekDay.WEDNESDAY)
-    .atHour(7)
-    .create();
-
-  // Thursday 7-8 AM
-  ScriptApp.newTrigger('runWeeklyUpdate')
-    .timeBased()
-    .onWeekDay(ScriptApp.WeekDay.THURSDAY)
-    .atHour(7)
-    .create();
-
+  ScriptApp.newTrigger('runWeeklyUpdate').timeBased().onWeekDay(ScriptApp.WeekDay.WEDNESDAY).atHour(7).create();
+  ScriptApp.newTrigger('runWeeklyUpdate').timeBased().onWeekDay(ScriptApp.WeekDay.THURSDAY).atHour(7).create();
   Logger.log('Triggers created: Wednesday + Thursday 7-8 AM');
 }
