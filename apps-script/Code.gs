@@ -14,7 +14,8 @@ function runWeeklyUpdate() {
   }
   updatePrices(ss);
   const avgs = getYtdAverages(ss);
-  sendEmail(getDashboardHtml(avgs));
+  const data = getPortfolioData(ss, avgs);
+  sendEmail(getDashboardHtml(data, avgs));
   Logger.log('=== Done ===');
 }
 
@@ -109,7 +110,100 @@ function updatePrices(ss) {
   for(let i=1;i<data.length;i++) {
     if(tks.includes(data[i][0])) try{sheet.getRange(i+1,3).setFormula(`=GOOGLEFINANCE("${data[i][0]}")`)}catch(e){}
   }
+  // Wait for GOOGLEFINANCE to resolve
+  SpreadsheetApp.flush();
+  Utilities.sleep(3000);
 }
+
+// ─── READ LIVE PORTFOLIO DATA FROM SHEET ────────────────────
+// Sheet columns: A=Ticker, B=Shares, C=Price, D=CostBasis, E=Dividends
+// INDIV rows: BABO,CHPY,LFGY,NVDY,PLTY (A-Z)
+// IRA rows: APLY,CONY,NVDY (after blank row)
+// Static data that never changes:
+const STATIC = {
+  INDIV: [
+    {tk:'BABO', shares:1000, cost:16751.52, exDay:'THU', ytdAvgKey:'BABO'},
+    {tk:'CHPY', shares:200,  cost:10954.50, exDay:'WED', ytdAvgKey:'CHPY'},
+    {tk:'LFGY', shares:200,  cost:8118.00,  exDay:'WED', ytdAvgKey:'LFGY'},
+    {tk:'NVDY', shares:1500, cost:25828.42, exDay:'THU', ytdAvgKey:'NVDY'},
+    {tk:'PLTY', shares:100,  cost:7719.10,  exDay:'THU', ytdAvgKey:'PLTY'},
+  ],
+  WATCHLIST: [
+    {tk:'GOOW', exDay:'MON'}, {tk:'HOOW', exDay:'MON'},
+    {tk:'PLTW', exDay:'MON'}, {tk:'WPAY', exDay:'TUE'},
+  ],
+  IRA: [
+    {tk:'APLY', shares:450, cost:5851.00,  exDay:'THU', ytdAvgKey:'APLY'},
+    {tk:'CONY', shares:55,  cost:4348.00,  exDay:'THU', ytdAvgKey:'CONY'},
+    {tk:'NVDY', shares:300, cost:4753.09,  exDay:'THU', ytdAvgKey:'NVDY'},
+  ],
+  INDIV_CLOSED_NET: -634,
+  IRA_CLOSED_NET:   1559,
+};
+
+function getPortfolioData(ss, avgs) {
+  const sheet = ss.getSheetByName(CONFIG.SHEET_NAME) || ss.getActiveSheet();
+  const rows  = sheet.getDataRange().getValues();
+
+  // Build a map of ticker → {price, dividends} from sheet
+  const sheetData = {};
+  for (let i = 1; i < rows.length; i++) {
+    const tk = rows[i][0];
+    if (!tk) continue;
+    sheetData[tk] = sheetData[tk] || [];
+    sheetData[tk].push({
+      shares: rows[i][1],
+      price:  parseFloat(rows[i][2]) || 0,
+      cost:   parseFloat(rows[i][3]) || 0,
+      divs:   parseFloat(rows[i][4]) || 0,
+    });
+  }
+
+  function calcPos(p, avgs) {
+    const price  = sheetData[p.tk] ? sheetData[p.tk].find(r=>r.shares===p.shares)?.price || 0 : 0;
+    const divs   = sheetData[p.tk] ? sheetData[p.tk].find(r=>r.shares===p.shares)?.divs  || 0 : 0;
+    const val    = p.shares * price;
+    const pl     = val - p.cost;
+    const net    = pl + divs;
+    const retPct = (net / p.cost) * 100;
+    const pbPct  = (divs / p.cost) * 100;
+    const avg    = avgs[p.ytdAvgKey] || 0;
+    const fcstWk = avg * p.shares;
+    const yield_ = price > 0 ? (avg * 52 / price) * 100 : 0;
+    return { ...p, price, divs, val, pl, net, retPct, pbPct, avg, fcstWk, yield_ };
+  }
+
+  const a = avgs || {};
+  const indiv = STATIC.INDIV.map(p => calcPos(p, a));
+  const ira   = STATIC.IRA.map(p => calcPos(p, a));
+
+  // Watchlist prices
+  const watchlist = STATIC.WATCHLIST.map(p => ({
+    ...p,
+    price: sheetData[p.tk] ? (sheetData[p.tk][0]?.price || 0) : 0,
+    avg: a[p.tk] || 0,
+  }));
+
+  // Totals
+  const sum = arr => arr.reduce((s,p) => ({
+    val:  s.val  + p.val,
+    cost: s.cost + p.cost,
+    divs: s.divs + p.divs,
+    net:  s.net  + p.net,
+    fcstWk: s.fcstWk + p.fcstWk,
+  }), {val:0,cost:0,divs:0,net:0,fcstWk:0});
+
+  const indivTot = sum(indiv);
+  const iraTot   = sum(ira);
+
+  return { indiv, ira, watchlist, indivTot, iraTot };
+}
+
+// ─── FORMATTING HELPERS ──────────────────────────────────────
+function fmt$(n)  { return (n<0?'-$':'$') + Math.abs(Math.round(n)).toLocaleString(); }
+function fmtP(n)  { return (n>=0?'+':'')+n.toFixed(1)+'%'; }
+function fmtD(n)  { return '$'+n.toFixed(4); }
+function fmtWk(n) { return '$'+Math.round(n).toLocaleString(); }
 
 // ─── HELPERS ────────────────────────────────────────────────
 function kpi(label, value, sub, color) {
@@ -199,252 +293,111 @@ function sectionHeader(text) {
   </td></tr>`;
 }
 
-// ─── MAIN HTML ───────────────────────────────────────────────
-function getDashboardHtml(avgs) {
+// ─── MAIN EMAIL HTML — reads live from sheet ─────────────────
+function getDashboardHtml(data, avgs) {
   const today = Utilities.formatDate(new Date(),'America/Los_Angeles','MMM d, yyyy');
+  const d = data;
+  const it = d.indivTot, rt = d.iraTot;
 
-  // Live YTD forecasts from averages
-  const shares = {BABO:1000,CHPY:200,LFGY:200,NVDY:1500,PLTY:100,APLY:450,CONY:55,NVDY_IRA:300};
-  const a = avgs || {};
-  const indivFcstWk  = Math.round((a.BABO||0.1013)*1000 + (a.CHPY||0.4972)*200 + (a.LFGY||0.2416)*200 + (a.NVDY||0.1185)*1500 + (a.PLTY||0.4463)*100);
-  const indivFcstMo  = Math.round(indivFcstWk * 4);
-  const iraFcstWk    = Math.round((a.APLY||0.0703)*450 + (a.CONY||0.3952)*55 + (a.NVDY||0.1185)*300);
-  const iraFcstMo    = Math.round(iraFcstWk * 4);
+  // Helper: position rows from live data
+  function liveRows(positions) {
+    return positions.map((p,i) => posRow(
+      p.tk,
+      p.shares.toLocaleString(),
+      '$'+p.price.toFixed(2),
+      fmt$(p.val),
+      fmt$(p.pl),
+      fmt$(p.divs),
+      fmtP(p.retPct),
+      p.pbPct.toFixed(1)+'%',
+      p.exDay,
+      i%2===0?'#2a2a2a':'#252525'
+    )).join('');
+  }
 
-  const html = `<!DOCTYPE html>
+  // Payback bars sorted by pct desc
+  function livePbBars(positions, padTo) {
+    const sorted = [...positions].sort((a,b)=>b.pbPct-a.pbPct);
+    let rows = sorted.map(p=>pbBar(p.tk, parseFloat(p.pbPct.toFixed(1)), Math.round(p.divs), Math.round(p.cost))).join('');
+    if (padTo && sorted.length < padTo) rows += `<td width="${(padTo-sorted.length)*20}%" style="padding:4px;"></td>`;
+    return rows;
+  }
+
+  const indivFcstWk = Math.round(it.fcstWk);
+  const iraFcstWk   = Math.round(rt.fcstWk);
+
+  return `<!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"></head>
 <body style="background-color:#111;margin:0;padding:20px;">
 <table width="100%" cellpadding="0" cellspacing="0" style="max-width:900px;margin:0 auto;">
-
-  <!-- HEADER -->
   <tr><td colspan="2" style="padding-bottom:20px;text-align:center;">
     <div style="font-family:Arial,sans-serif;font-size:26px;font-weight:bold;color:#fff;">Dividend Portfolio</div>
     <div style="font-family:Arial,sans-serif;font-size:12px;color:#888;margin-top:4px;">Updated ${today}</div>
   </td></tr>
 
   ${sectionHeader('INDIV')}
+  <tr><td colspan="2" style="padding-bottom:12px;"><table width="100%" cellpadding="0" cellspacing="0"><tr>
+    ${kpi('Portfolio Value',fmt$(it.val),'Cost: '+fmt$(it.cost),'')}
+    ${kpi('Total Return',(it.net>=0?'+':'')+fmt$(it.net),fmtP(it.net/it.cost*100),it.net>=0?'#4ade80':'#f87171')}
+    ${kpi('Closed Positions',fmt$(STATIC.INDIV_CLOSED_NET),fmtP(STATIC.INDIV_CLOSED_NET/it.cost*100),STATIC.INDIV_CLOSED_NET>=0?'#4ade80':'#f87171')}
+    ${kpi('Forecast / Week',fmtWk(it.fcstWk),'2026 YTD avg','#64b5f6')}
+    ${kpi('Forecast / Month',fmtWk(it.fcstWk*4),'2026 YTD avg','#ffd54f')}
+  </tr></table></td></tr>
 
-  <!-- INDIV KPIs -->
-  <tr><td colspan="2" style="padding-bottom:12px;">
-    <table width="100%" cellpadding="0" cellspacing="0">
-      <tr>
-        ${kpi('Portfolio Value','$55,032','Cost: $69,372','')}
-        ${kpi('Total Return','+$12,015','+17.3%','#4ade80')}
-        ${kpi('Closed Positions','-$634','-0.4%','#f87171')}
-        ${kpi('Forecast / Week','$'+indivFcstWk,'2026 YTD avg','#64b5f6')}
-        ${kpi('Forecast / Month','$'+indivFcstMo,'2026 YTD avg','#ffd54f')}
-      </tr>
-    </table>
-  </td></tr>
-
-  <!-- INDIV POSITIONS TABLE -->
-  <tr><td colspan="2" style="padding-bottom:6px;">
-    <div style="font-family:Arial,sans-serif;font-size:11px;font-weight:bold;color:#aaa;text-transform:uppercase;padding:0 0 6px 0;">Positions</div>
-  </td></tr>
+  <tr><td colspan="2" style="padding-bottom:6px;"><div style="font-family:Arial,sans-serif;font-size:11px;font-weight:bold;color:#aaa;text-transform:uppercase;">Positions</div></td></tr>
   <tr><td colspan="2" style="padding-bottom:15px;">
     <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#2a2a2a;border:1px solid #444;border-radius:6px;overflow:hidden;">
       ${tableHeader([{label:'Ticker',left:true},{label:'Shares'},{label:'Price'},{label:'Value'},{label:'P/L'},{label:'Dividends'},{label:'Total Ret%'},{label:'Payback%'}])}
-      ${posRow('BABO','1,000','$10.59','$10,590','-$6,162','$6,149','-0.1%','36.7%','THU','#2a2a2a')}
-      ${posRow('CHPY','200','$74.90','$14,980','+$4,026','$3,447','+68.2%','31.5%','WED','#252525')}
-      ${posRow('LFGY','200','$24.36','$4,872','-$3,246','$3,057','-2.3%','37.7%','WED','#2a2a2a')}
-      ${posRow('NVDY','1,500','$14.08','$21,120','-$4,708','$10,683','+23.1%','41.4%','THU','#252525')}
-      ${posRow('PLTY','100','$34.70','$3,470','-$4,249','$3,020','-15.9%','39.1%','THU','#2a2a2a')}
+      ${liveRows(d.indiv)}
       <tr style="background-color:#1a1a1a;">
         <td colspan="3" style="padding:9px 10px;font-family:Arial,sans-serif;font-size:11px;color:#aaa;font-weight:bold;border-top:2px solid #444;">TOTAL</td>
-        <td style="padding:9px 10px;font-family:Arial,sans-serif;font-size:12px;color:#fff;font-weight:bold;text-align:right;border-top:2px solid #444;">$55,032</td>
-        <td style="padding:9px 10px;font-family:Arial,sans-serif;font-size:12px;color:#f87171;font-weight:bold;text-align:right;border-top:2px solid #444;">-$14,340</td>
-        <td style="padding:9px 10px;font-family:Arial,sans-serif;font-size:12px;color:#4ade80;font-weight:bold;text-align:right;border-top:2px solid #444;">$26,355</td>
-        <td style="padding:9px 10px;font-family:Arial,sans-serif;font-size:12px;color:#4ade80;font-weight:bold;text-align:right;border-top:2px solid #444;">+17.3%</td>
-        <td style="padding:9px 10px;font-family:Arial,sans-serif;font-size:12px;color:#4ade80;font-weight:bold;text-align:right;border-top:2px solid #444;">38.0%</td>
+        <td style="padding:9px 10px;font-family:Arial,sans-serif;font-size:12px;color:#fff;font-weight:bold;text-align:right;border-top:2px solid #444;">${fmt$(it.val)}</td>
+        <td style="padding:9px 10px;font-family:Arial,sans-serif;font-size:12px;color:${it.pl>=0?'#4ade80':'#f87171'};font-weight:bold;text-align:right;border-top:2px solid #444;">${fmt$(it.pl)}</td>
+        <td style="padding:9px 10px;font-family:Arial,sans-serif;font-size:12px;color:#4ade80;font-weight:bold;text-align:right;border-top:2px solid #444;">${fmt$(it.divs)}</td>
+        <td style="padding:9px 10px;font-family:Arial,sans-serif;font-size:12px;color:${it.net>=0?'#4ade80':'#f87171'};font-weight:bold;text-align:right;border-top:2px solid #444;">${fmtP(it.net/it.cost*100)}</td>
+        <td style="padding:9px 10px;font-family:Arial,sans-serif;font-size:12px;color:#4ade80;font-weight:bold;text-align:right;border-top:2px solid #444;">${(it.divs/it.cost*100).toFixed(1)}%</td>
       </tr>
     </table>
   </td></tr>
 
-  <!-- INDIV PAYBACK -->
-  <tr><td colspan="2" style="padding-bottom:6px;">
-    <div style="font-family:Arial,sans-serif;font-size:11px;font-weight:bold;color:#aaa;text-transform:uppercase;padding:0 0 6px 0;">Payback Progress</div>
-  </td></tr>
-  <tr><td colspan="2" style="padding-bottom:15px;">
-    <table width="100%" cellpadding="0" cellspacing="0">
-      <tr>
-        ${pbBar('NVDY',41.4,10683,25828)}
-        ${pbBar('PLTY',39.1,3020,7719)}
-        ${pbBar('LFGY',37.7,3057,8118)}
-        ${pbBar('BABO',36.7,6149,16752)}
-        ${pbBar('CHPY',31.5,3447,10955)}
-      </tr>
-    </table>
-  </td></tr>
-
-  <!-- INDIV BOTTOM ROW: chart + calendar -->
-  <tr><td colspan="2" style="padding-bottom:15px;">
-    <table width="100%" cellpadding="0" cellspacing="0">
-      <tr>
-        <!-- WEEKLY DIV RECEIVED -->
-        <td width="55%" style="vertical-align:top;padding-right:8px;">
-          <div style="font-family:Arial,sans-serif;font-size:11px;font-weight:bold;color:#aaa;text-transform:uppercase;padding:0 0 6px 0;">Weekly Div Received</div>
-          <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#2a2a2a;border:1px solid #444;border-radius:6px;">
-            <tr><td style="padding:14px;">
-              <table width="100%" cellpadding="0" cellspacing="0" style="border-bottom:1px solid #444;">
-                <tr>
-                  ${barCell(74,'Mar17',false)}
-                  ${barCell(79,'Mar24',false)}
-                  ${barCell(74,'Mar31',false)}
-                  ${barCell(69,'Apr7',false)}
-                  ${barCell(71,'Apr14',false)}
-                  ${barCell(74,'Apr21',false)}
-                  ${barCell(79,'Apr28',false)}
-                  ${barCell(100,'May5',true)}
-                </tr>
-              </table>
-              <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:10px;border-top:1px solid #333;padding-top:10px;">
-                <tr>
-                  <td style="font-family:Arial,sans-serif;font-size:10px;color:#aaa;">This week<br><span style="font-size:16px;font-weight:bold;color:#4ade80;">$482</span></td>
-                  <td style="text-align:right;font-family:Arial,sans-serif;font-size:10px;color:#aaa;">8-week avg<br><span style="font-size:16px;font-weight:bold;color:#fff;">$476</span></td>
-                </tr>
-              </table>
-            </td></tr>
-          </table>
-        </td>
-        <!-- DIV FORECAST -->
-        <td width="45%" style="vertical-align:top;padding-left:8px;">
-          <div style="font-family:Arial,sans-serif;font-size:11px;font-weight:bold;color:#aaa;text-transform:uppercase;padding:0 0 6px 0;">Div Forecast</div>
-          <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#2a2a2a;border:1px solid #444;border-radius:6px;">
-            <tr><td style="padding:6px 0;">
-              <table width="100%" cellpadding="0" cellspacing="0">
-                ${calRow('CHPY','Thu May 7','$0.6024/sh','+$120.48')}
-                ${calRow('LFGY','Thu May 7','$0.2513/sh','+$50.26')}
-                ${calRow('BABO','Fri May 8','$0.0924/sh','+$92.40')}
-                ${calRow('NVDY','Fri May 8','$0.1281/sh','+$192.15')}
-                ${calRow('PLTY','Fri May 8','$0.2708/sh','+$27.08')}
-              </table>
-              <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#1a1a1a;border-top:1px solid #444;">
-                <tr>
-                  <td style="padding:8px 12px;font-family:Arial,sans-serif;font-size:11px;color:#aaa;">Week total</td>
-                  <td style="padding:8px 12px;font-family:Arial,sans-serif;font-size:13px;font-weight:bold;color:#4ade80;text-align:right;">$482.37</td>
-                </tr>
-              </table>
-            </td></tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </td></tr>
+  <tr><td colspan="2" style="padding-bottom:6px;"><div style="font-family:Arial,sans-serif;font-size:11px;font-weight:bold;color:#aaa;text-transform:uppercase;">Payback Progress</div></td></tr>
+  <tr><td colspan="2" style="padding-bottom:15px;"><table width="100%" cellpadding="0" cellspacing="0"><tr>${livePbBars(d.indiv,5)}</tr></table></td></tr>
 
   ${sectionHeader('IRA')}
+  <tr><td colspan="2" style="padding-bottom:12px;"><table width="100%" cellpadding="0" cellspacing="0"><tr>
+    ${kpi('Portfolio Value',fmt$(rt.val),'Cost: '+fmt$(rt.cost),'')}
+    ${kpi('Total Return',(rt.net>=0?'+':'')+fmt$(rt.net),fmtP(rt.net/rt.cost*100),rt.net>=0?'#4ade80':'#f87171')}
+    ${kpi('Closed Positions',fmt$(STATIC.IRA_CLOSED_NET),fmtP(STATIC.IRA_CLOSED_NET/rt.cost*100),STATIC.IRA_CLOSED_NET>=0?'#4ade80':'#f87171')}
+    ${kpi('Forecast / Week',fmtWk(rt.fcstWk),'2026 YTD avg','#64b5f6')}
+    ${kpi('Forecast / Month',fmtWk(rt.fcstWk*4),'2026 YTD avg','#ffd54f')}
+  </tr></table></td></tr>
 
-  <!-- IRA KPIs -->
-  <tr><td colspan="2" style="padding-bottom:12px;">
-    <table width="100%" cellpadding="0" cellspacing="0">
-      <tr>
-        ${kpi('Portfolio Value','$11,358','Cost: $14,952','')}
-        ${kpi('Total Return','+$3,501','+23.4%','#4ade80')}
-        ${kpi('Closed Positions','+$1,559','+4.1%','#4ade80')}
-        ${kpi('Forecast / Week','$'+iraFcstWk,'2026 YTD avg','#64b5f6')}
-        ${kpi('Forecast / Month','$'+iraFcstMo,'2026 YTD avg','#ffd54f')}
-      </tr>
-    </table>
-  </td></tr>
-
-  <!-- IRA POSITIONS TABLE -->
-  <tr><td colspan="2" style="padding-bottom:6px;">
-    <div style="font-family:Arial,sans-serif;font-size:11px;font-weight:bold;color:#aaa;text-transform:uppercase;padding:0 0 6px 0;">Positions</div>
-  </td></tr>
+  <tr><td colspan="2" style="padding-bottom:6px;"><div style="font-family:Arial,sans-serif;font-size:11px;font-weight:bold;color:#aaa;text-transform:uppercase;">Positions</div></td></tr>
   <tr><td colspan="2" style="padding-bottom:15px;">
     <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#2a2a2a;border:1px solid #444;border-radius:6px;overflow:hidden;">
       ${tableHeader([{label:'Ticker',left:true},{label:'Shares'},{label:'Price'},{label:'Value'},{label:'P/L'},{label:'Dividends'},{label:'Total Ret%'},{label:'Payback%'}])}
-      ${posRow('APLY','450','$12.53','$5,638','-$212','$1,670','+24.9%','28.5%','THU','#2a2a2a')}
-      ${posRow('CONY','55','$27.19','$1,495','-$2,853','$3,032','+4.1%','69.7%','THU','#252525')}
-      ${posRow('NVDY','300','$14.08','$4,224','-$529','$2,393','+39.2%','50.4%','THU','#2a2a2a')}
+      ${liveRows(d.ira)}
       <tr style="background-color:#1a1a1a;">
         <td colspan="3" style="padding:9px 10px;font-family:Arial,sans-serif;font-size:11px;color:#aaa;font-weight:bold;border-top:2px solid #444;">TOTAL</td>
-        <td style="padding:9px 10px;font-family:Arial,sans-serif;font-size:12px;color:#fff;font-weight:bold;text-align:right;border-top:2px solid #444;">$11,358</td>
-        <td style="padding:9px 10px;font-family:Arial,sans-serif;font-size:12px;color:#f87171;font-weight:bold;text-align:right;border-top:2px solid #444;">-$3,594</td>
-        <td style="padding:9px 10px;font-family:Arial,sans-serif;font-size:12px;color:#4ade80;font-weight:bold;text-align:right;border-top:2px solid #444;">$7,096</td>
-        <td style="padding:9px 10px;font-family:Arial,sans-serif;font-size:12px;color:#4ade80;font-weight:bold;text-align:right;border-top:2px solid #444;">+23.4%</td>
-        <td style="padding:9px 10px;font-family:Arial,sans-serif;font-size:12px;color:#4ade80;font-weight:bold;text-align:right;border-top:2px solid #444;">47.5%</td>
+        <td style="padding:9px 10px;font-family:Arial,sans-serif;font-size:12px;color:#fff;font-weight:bold;text-align:right;border-top:2px solid #444;">${fmt$(rt.val)}</td>
+        <td style="padding:9px 10px;font-family:Arial,sans-serif;font-size:12px;color:${rt.pl>=0?'#4ade80':'#f87171'};font-weight:bold;text-align:right;border-top:2px solid #444;">${fmt$(rt.pl)}</td>
+        <td style="padding:9px 10px;font-family:Arial,sans-serif;font-size:12px;color:#4ade80;font-weight:bold;text-align:right;border-top:2px solid #444;">${fmt$(rt.divs)}</td>
+        <td style="padding:9px 10px;font-family:Arial,sans-serif;font-size:12px;color:${rt.net>=0?'#4ade80':'#f87171'};font-weight:bold;text-align:right;border-top:2px solid #444;">${fmtP(rt.net/rt.cost*100)}</td>
+        <td style="padding:9px 10px;font-family:Arial,sans-serif;font-size:12px;color:#4ade80;font-weight:bold;text-align:right;border-top:2px solid #444;">${(rt.divs/rt.cost*100).toFixed(1)}%</td>
       </tr>
     </table>
   </td></tr>
 
-  <!-- IRA PAYBACK -->
-  <tr><td colspan="2" style="padding-bottom:6px;">
-    <div style="font-family:Arial,sans-serif;font-size:11px;font-weight:bold;color:#aaa;text-transform:uppercase;padding:0 0 6px 0;">Payback Progress</div>
-  </td></tr>
-  <tr><td colspan="2" style="padding-bottom:15px;">
-    <table width="100%" cellpadding="0" cellspacing="0">
-      <tr>
-        ${pbBar('CONY',69.7,3032,4348)}
-        ${pbBar('NVDY',50.4,2393,4753)}
-        ${pbBar('APLY',28.5,1670,5851)}
-        <td width="40%" style="padding:4px;"></td>
-      </tr>
-    </table>
-  </td></tr>
-
-  <!-- IRA BOTTOM ROW: chart + calendar -->
-  <tr><td colspan="2" style="padding-bottom:30px;">
-    <table width="100%" cellpadding="0" cellspacing="0">
-      <tr>
-        <td width="55%" style="vertical-align:top;padding-right:8px;">
-          <div style="font-family:Arial,sans-serif;font-size:11px;font-weight:bold;color:#aaa;text-transform:uppercase;padding:0 0 6px 0;">Weekly Div Received</div>
-          <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#2a2a2a;border:1px solid #444;border-radius:6px;">
-            <tr><td style="padding:14px;">
-              <table width="100%" cellpadding="0" cellspacing="0" style="border-bottom:1px solid #444;">
-                <tr>
-                  ${barCell(77,'Mar17',false)}
-                  ${barCell(81,'Mar24',false)}
-                  ${barCell(68,'Mar31',false)}
-                  ${barCell(69,'Apr7',false)}
-                  ${barCell(72,'Apr14',false)}
-                  ${barCell(80,'Apr21',false)}
-                  ${barCell(90,'Apr28',false)}
-                  ${barCell(100,'May5',true)}
-                </tr>
-              </table>
-              <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:10px;border-top:1px solid #333;padding-top:10px;">
-                <tr>
-                  <td style="font-family:Arial,sans-serif;font-size:10px;color:#aaa;">This week<br><span style="font-size:16px;font-weight:bold;color:#4ade80;">$109</span></td>
-                  <td style="text-align:right;font-family:Arial,sans-serif;font-size:10px;color:#aaa;">8-week avg<br><span style="font-size:16px;font-weight:bold;color:#fff;">$97</span></td>
-                </tr>
-              </table>
-            </td></tr>
-          </table>
-        </td>
-        <td width="45%" style="vertical-align:top;padding-left:8px;">
-          <div style="font-family:Arial,sans-serif;font-size:11px;font-weight:bold;color:#aaa;text-transform:uppercase;padding:0 0 6px 0;">Div Forecast</div>
-          <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#2a2a2a;border:1px solid #444;border-radius:6px;">
-            <tr><td style="padding:6px 0;">
-              <table width="100%" cellpadding="0" cellspacing="0">
-                ${calRow('APLY','Fri May 8','$0.1033/sh','+$46.49')}
-                ${calRow('CONY','Fri May 8','$0.4464/sh','+$24.55')}
-                ${calRow('NVDY','Fri May 8','$0.1281/sh','+$38.43')}
-              </table>
-              <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#1a1a1a;border-top:1px solid #444;">
-                <tr>
-                  <td style="padding:8px 12px;font-family:Arial,sans-serif;font-size:11px;color:#aaa;">Week total</td>
-                  <td style="padding:8px 12px;font-family:Arial,sans-serif;font-size:13px;font-weight:bold;color:#4ade80;text-align:right;">$109.47</td>
-                </tr>
-              </table>
-            </td></tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </td></tr>
+  <tr><td colspan="2" style="padding-bottom:6px;"><div style="font-family:Arial,sans-serif;font-size:11px;font-weight:bold;color:#aaa;text-transform:uppercase;">Payback Progress</div></td></tr>
+  <tr><td colspan="2" style="padding-bottom:15px;"><table width="100%" cellpadding="0" cellspacing="0"><tr>${livePbBars(d.ira,5)}</tr></table></td></tr>
 
   <!-- FOOTER -->
   <tr><td colspan="2" style="text-align:center;padding-top:20px;border-top:1px solid #333;">
     <a href="https://script.google.com/macros/s/AKfycbzHsDpaNec2_fpgthmbHudzFYFnvxw6DvjJzdwMZx8PC6sW-Mk7zwrTgluMnwYX068S9A/exec" style="display:inline-block;background-color:#4ade80;color:#000;font-family:Arial,sans-serif;font-size:13px;font-weight:bold;padding:12px 28px;border-radius:6px;text-decoration:none;">View Full Dashboard →</a>
     <div style="font-family:Arial,sans-serif;font-size:11px;color:#555;margin-top:12px;">Auto-generated by Dividend Tracker</div>
   </td></tr>
-
-</table>
-</body>
-</html>`;
-
-  return html;
+</table></body></html>`;
 }
 
 function sendEmail(html) {
@@ -464,18 +417,34 @@ function createTriggers() {
 function doGet() {
   const ss   = getOrCreateSheet();
   const avgs = getYtdAverages(ss);
-  const html = HtmlService.createHtmlOutput(getInteractiveDashboard(avgs));
+  const data = getPortfolioData(ss, avgs);
+  const html = HtmlService.createHtmlOutput(getInteractiveDashboard(data, avgs));
   html.setTitle('Dividend Portfolio');
   html.setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   return html;
 }
 
-function getInteractiveDashboard(avgs) {
-  const a = avgs || {};
-  const indivFcstWk = Math.round((a.BABO||0.1013)*1000+(a.CHPY||0.4972)*200+(a.LFGY||0.2416)*200+(a.NVDY||0.1185)*1500+(a.PLTY||0.4463)*100);
-  const indivFcstMo = Math.round(indivFcstWk*4);
-  const iraFcstWk   = Math.round((a.APLY||0.0703)*450+(a.CONY||0.3952)*55+(a.NVDY||0.1185)*300);
-  const iraFcstMo   = Math.round(iraFcstWk*4);
+function getInteractiveDashboard(data, avgs) {
+  const d  = data || {};
+  const it = d.indivTot || {val:55032,cost:69372,divs:26355,net:12015,fcstWk:471};
+  const rt = d.iraTot   || {val:11358,cost:14952,divs:7096, net:3501, fcstWk:89};
+
+  // Build position data for JS injection
+  function posJson(positions) {
+    return JSON.stringify((positions||[]).map(p=>({
+      tk:p.tk, shares:p.shares, price:p.price, val:p.val, pl:p.pl,
+      divs:p.divs, net:p.net, retPct:p.retPct, pbPct:p.pbPct,
+      avg:p.avg, fcstWk:p.fcstWk, yield_:p.yield_, exDay:p.exDay,
+      cost:p.cost
+    })));
+  }
+
+  const indivJson    = posJson(d.indiv);
+  const iraJson      = posJson(d.ira);
+  const watchJson    = JSON.stringify((d.watchlist||[]).map(w=>({tk:w.tk,price:w.price,avg:w.avg,exDay:w.exDay})));
+  const indivClosedNet = STATIC.INDIV_CLOSED_NET;
+  const iraClosedNet   = STATIC.IRA_CLOSED_NET;
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -504,7 +473,7 @@ body{background:var(--bg);color:var(--tx);font-family:var(--f);font-size:12px;mi
 .kl{font-size:9px;color:var(--tx2);text-transform:uppercase;letter-spacing:.12em;margin-bottom:7px;}
 .kv{font-family:var(--h);font-size:20px;font-weight:700;line-height:1;color:#fff;}
 .kv.g{color:var(--g);}.kv.r{color:var(--rd);}.kv.b{color:var(--b);}.kv.am{color:var(--am);}
-.ks{font-size:10px;color:var(--tx3);margin-top:4px;}.kn{font-size:9px;color:var(--tx3);margin-top:3px;font-style:italic;}
+.ks{font-size:10px;color:var(--tx3);margin-top:4px;}
 .g2{display:grid;grid-template-columns:1fr 330px;gap:12px;margin-bottom:12px;}
 .card{background:var(--s1);border:1px solid var(--bdr);border-radius:9px;overflow:hidden;}
 .table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%;max-width:calc(100vw - 40px);}
@@ -521,15 +490,6 @@ td{padding:7px 9px;text-align:right;font-size:11px;}td:first-child{text-align:le
 .sort-btns{display:flex;gap:4px;}
 .sb{padding:3px 8px;border-radius:4px;font-family:var(--f);font-size:9px;border:1px solid var(--bdr2);color:var(--tx3);background:transparent;cursor:pointer;transition:all .15s;}
 .sb:hover{border-color:var(--tx2);color:var(--tx2);}.sb.active{border-color:var(--g);color:var(--g);background:rgba(0,229,160,.08);}
-.card{background:var(--s1);border:1px solid var(--bdr);border-radius:9px;overflow:hidden;}
-.table-scroll{overflow-x:scroll;-webkit-overflow-scrolling:touch;width:100%;display:block;}
-table{border-collapse:collapse;min-width:750px;width:750px;}
-thead th{padding:7px 9px;text-align:right;font-size:9px;color:var(--tx3);text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid var(--bdr);background:var(--s2);}
-thead th:first-child{text-align:left;}
-tbody tr{border-bottom:1px solid #0d1314;transition:background .1s;}
-tbody tr:hover{background:#0e1617;}
-tbody tr.z{opacity:.35;}
-td{padding:7px 9px;text-align:right;font-size:11px;}td:first-child{text-align:left;}
 .tk{font-family:var(--h);font-weight:700;font-size:12px;color:#fff;}
 .exd{display:inline-block;font-size:8px;padding:1px 4px;border-radius:3px;margin-left:4px;vertical-align:middle;}
 .thu{background:rgba(0,229,160,.1);color:var(--g);border:1px solid rgba(0,229,160,.25);}
@@ -580,220 +540,250 @@ td{padding:7px 9px;text-align:right;font-size:11px;}td:first-child{text-align:le
 <div class="hdr">
   <div>
     <div class="hdr-t">Dividend Portfolio</div>
-    <div class="hdr-s"><span class="dot"></span>Auto-updated · Pay dates: Thu &amp; Fri</div>
+    <div class="hdr-s"><span class="dot"></span>Live data</div>
   </div>
   <div style="display:flex;align-items:center;gap:8px;">
     <div class="tabs">
       <div class="tab on" onclick="switchTab('indiv',this)">INDIV</div>
       <div class="tab" onclick="switchTab('ira',this)">IRA</div>
     </div>
-    <span class="ts">Last: Fri May 8</span>
+    <span class="ts" id="lastUpdate"></span>
   </div>
 </div>
 
-<div id="panel-indiv" class="panel on">
-  <div class="kpis">
-    <div class="kpi"><div class="kl">Portfolio Value</div><div class="kv">$55,032</div><div class="ks">Cost basis $69,372</div></div>
-    <div class="kpi"><div class="kl">Total Return</div><div class="kv g">+$12,015</div><div class="ks">+17.3%</div></div>
-    <div class="kpi kp"><div class="kl">Total Return — Closed</div><div class="kv r">-$634</div><div class="ks">-0.4%</div></div>
-    <div class="kpi kb"><div class="kl">Forecast / Week</div><div class="kv b">$${indivFcstWk}</div><div class="ks">2026 YTD avg × shares</div></div>
-    <div class="kpi ka"><div class="kl">Forecast / Month</div><div class="kv am">$${indivFcstMo}</div><div class="ks">2026 YTD avg × shares</div></div>
-  </div>
-  <div class="g2">
-    <div class="card">
-      <div class="ch"><span class="ct">Positions</span><span class="bdg">5 active · 4 watchlist</span></div>
-      <div class="table-scroll">
-      <table>
-        <thead><tr><th>Ticker</th><th>Shares</th><th>Price</th><th>Curr Val</th><th>P/L</th><th>Dividends</th><th>P/L+Div</th><th>Tot Ret%</th><th>Payback%</th><th>YTD Avg/Wk</th><th>Fcst/Wk</th><th>Div Yield%</th></tr></thead>
-        <tbody>
-          <tr><td><span class="tk">BABO</span><span class="exd thu">THU</span></td><td>1,000</td><td>$10.59</td><td>$10,590</td><td class="r">-$6,162</td><td class="g">$6,149</td><td class="r">-$13</td><td class="r">-0.1%</td><td class="g">36.7%</td><td>$0.1013</td><td class="g">$101.30</td><td>49.7%</td></tr>
-          <tr><td><span class="tk">CHPY</span><span class="exd wed">WED</span></td><td>200</td><td>$74.90</td><td>$14,980</td><td class="g">+$4,026</td><td class="g">$3,447</td><td class="g">+$7,473</td><td class="g">+68.2%</td><td class="g">31.5%</td><td>$0.4972</td><td class="g">$99.44</td><td>34.5%</td></tr>
-          <tr><td><span class="tk">LFGY</span><span class="exd wed">WED</span></td><td>200</td><td>$24.36</td><td>$4,872</td><td class="r">-$3,246</td><td class="g">$3,057</td><td class="r">-$189</td><td class="r">-2.3%</td><td class="g">37.7%</td><td>$0.2416</td><td class="g">$48.32</td><td>51.6%</td></tr>
-          <tr><td><span class="tk">NVDY</span><span class="exd thu">THU</span></td><td>1,500</td><td>$14.08</td><td>$21,120</td><td class="r">-$4,708</td><td class="g">$10,683</td><td class="g">+$5,975</td><td class="g">+23.1%</td><td class="g">41.4%</td><td>$0.1185</td><td class="g">$177.75</td><td>43.8%</td></tr>
-          <tr><td><span class="tk">PLTY</span><span class="exd thu">THU</span></td><td>100</td><td>$34.70</td><td>$3,470</td><td class="r">-$4,249</td><td class="g">$3,020</td><td class="r">-$1,229</td><td class="r">-15.9%</td><td class="g">39.1%</td><td>$0.4463</td><td class="g">$44.63</td><td>66.9%</td></tr>
-          <tr class="z"><td><span class="tk">GOOW</span><span class="exd mon">MON</span></td><td class="dm">—</td><td>$82.35</td><td class="dm">—</td><td class="dm">—</td><td class="dm">—</td><td class="dm">—</td><td class="dm">—</td><td class="dm">—</td><td>$0.5971</td><td class="dm">—</td><td>37.7%</td></tr>
-          <tr class="z"><td><span class="tk">HOOW</span><span class="exd mon">MON</span></td><td class="dm">—</td><td>$23.46</td><td class="dm">—</td><td class="dm">—</td><td class="dm">—</td><td class="dm">—</td><td class="dm">—</td><td class="dm">—</td><td>$0.9722</td><td class="dm">—</td><td>215.5%</td></tr>
-          <tr class="z"><td><span class="tk">PLTW</span><span class="exd mon">MON</span></td><td class="dm">—</td><td>$22.24</td><td class="dm">—</td><td class="dm">—</td><td class="dm">—</td><td class="dm">—</td><td class="dm">—</td><td class="dm">—</td><td>$0.5584</td><td class="dm">—</td><td>130.6%</td></tr>
-          <tr class="z"><td><span class="tk">WPAY</span><span class="exd tue">TUE</span></td><td class="dm">—</td><td>$39.31</td><td class="dm">—</td><td class="dm">—</td><td class="dm">—</td><td class="dm">—</td><td class="dm">—</td><td class="dm">—</td><td>$0.4730</td><td class="dm">—</td><td>62.6%</td></tr>
-        </tbody>
-        <tbody class="tft"><tr><td>Total</td><td colspan="2"></td><td>$55,032</td><td class="r">-$14,340</td><td class="g">$26,355</td><td class="g">+$12,015</td><td class="g">+17.3%</td><td class="g">38.0%</td><td></td><td class="g">$471.44</td><td></td></tr></tbody>
-      </table>
-      </div>
-      <div class="pb-section">
-        <div class="pb-header"><span class="ct" style="font-size:11px;">Payback Progress</span>
-          <div class="sort-btns">
-            <button class="sb" onclick="sortPB('indiv','alpha',this)">A→Z</button>
-            <button class="sb active" onclick="sortPB('indiv','pct-desc',this)">% High→Low</button>
-            <button class="sb" onclick="sortPB('indiv','pct-asc',this)">% Low→High</button>
-          </div>
-        </div>
-        <div class="pb-grid" id="pb-indiv"></div>
-      </div>
-    </div>
-    <div class="rp">
-      <div class="card">
-        <div class="ch"><span class="ct">Weekly Div Received</span><span class="bdg">Actual · 8 weeks</span></div>
-        <div class="chart-outer">
-          <div class="chart-inner">
-            <div class="y-axis"><span class="y-label">$614</span><span class="y-label">$460</span><span class="y-label">$307</span><span class="y-label">$153</span><span class="y-label">$0</span></div>
-            <div class="chart-body">
-              <div class="bars-area">
-                <div class="bar-col"><div class="bar" style="height:74.4%"></div></div>
-                <div class="bar-col"><div class="bar" style="height:78.5%"></div></div>
-                <div class="bar-col"><div class="bar" style="height:73.5%"></div></div>
-                <div class="bar-col"><div class="bar" style="height:69.4%"></div></div>
-                <div class="bar-col"><div class="bar" style="height:70.9%"></div></div>
-                <div class="bar-col"><div class="bar" style="height:74.1%"></div></div>
-                <div class="bar-col"><div class="bar" style="height:78.7%"></div></div>
-                <div class="bar-col"><div class="bar" style="height:99.8%"></div></div>
-                <svg class="chart-svg" id="trend-svg-indiv"></svg>
-              </div>
-              <div class="x-labels"><div class="x-lbl">Mar17</div><div class="x-lbl">Mar24</div><div class="x-lbl">Mar31</div><div class="x-lbl">Apr7</div><div class="x-lbl">Apr14</div><div class="x-lbl">Apr21</div><div class="x-lbl">Apr28</div><div class="x-lbl">May5</div></div>
-            </div>
-          </div>
-          <div class="trend-note"><span class="trend-swatch"></span> 8-week average</div>
-          <div class="chart-foot">
-            <div><div class="cfl">This week</div><div class="cfv g">$482.37</div></div>
-            <div style="text-align:right"><div class="cfl">8-week avg</div><div class="cfv" style="color:#fff">$475.62</div></div>
-          </div>
-        </div>
-      </div>
-      <div class="card">
-        <div class="ch"><span class="ct">Div Forecast</span>
-          <div class="sort-btns">
-            <button class="sb" onclick="sortCal('indiv','alpha',this)">A→Z</button>
-            <button class="sb active" onclick="sortCal('indiv','date',this)">By Date</button>
-          </div>
-        </div>
-        <div class="calnote">Dates = day cash deposits to account</div>
-        <div class="cal-body" id="cal-indiv"></div>
-        <div class="caltot">Week total <span>$482.37</span></div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div id="panel-ira" class="panel">
-  <div class="kpis">
-    <div class="kpi"><div class="kl">Portfolio Value</div><div class="kv">$11,358</div><div class="ks">Cost basis $14,952</div></div>
-    <div class="kpi"><div class="kl">Total Return</div><div class="kv g">+$3,501</div><div class="ks">+23.4%</div></div>
-    <div class="kpi kp"><div class="kl">Total Return — Closed</div><div class="kv g">+$1,559</div><div class="ks">+4.1%</div></div>
-    <div class="kpi kb"><div class="kl">Forecast / Week</div><div class="kv b">$${iraFcstWk}</div><div class="ks">2026 YTD avg × shares</div></div>
-    <div class="kpi ka"><div class="kl">Forecast / Month</div><div class="kv am">$${iraFcstMo}</div><div class="ks">2026 YTD avg × shares</div></div>
-  </div>
-  <div class="g2">
-    <div class="card">
-      <div class="ch"><span class="ct">Positions</span><span class="bdg">3 active</span></div>
-      <div class="table-scroll">
-      <table>
-        <thead><tr><th>Ticker</th><th>Shares</th><th>Price</th><th>Curr Val</th><th>P/L</th><th>Dividends</th><th>P/L+Div</th><th>Tot Ret%</th><th>Payback%</th><th>YTD Avg/Wk</th><th>Fcst/Wk</th><th>Div Yield%</th></tr></thead>
-        <tbody>
-          <tr><td><span class="tk">APLY</span><span class="exd thu">THU</span></td><td>450</td><td>$12.53</td><td>$5,638</td><td class="r">-$212</td><td class="g">$1,670</td><td class="g">+$1,458</td><td class="g">+24.9%</td><td class="g">28.5%</td><td>$0.0703</td><td class="g">$31.64</td><td>29.2%</td></tr>
-          <tr><td><span class="tk">CONY</span><span class="exd thu">THU</span></td><td>55</td><td>$27.19</td><td>$1,495</td><td class="r">-$2,853</td><td class="g">$3,032</td><td class="g">+$180</td><td class="g">+4.1%</td><td class="g">69.7%</td><td>$0.3952</td><td class="g">$21.74</td><td>75.6%</td></tr>
-          <tr><td><span class="tk">NVDY</span><span class="exd thu">THU</span></td><td>300</td><td>$14.08</td><td>$4,224</td><td class="r">-$529</td><td class="g">$2,393</td><td class="g">+$1,864</td><td class="g">+39.2%</td><td class="g">50.4%</td><td>$0.1185</td><td class="g">$35.55</td><td>43.8%</td></tr>
-        </tbody>
-        <tbody class="tft"><tr><td>IRA total</td><td colspan="2"></td><td>$11,358</td><td class="r">-$3,594</td><td class="g">$7,096</td><td class="g">+$3,501</td><td class="g">+23.4%</td><td class="g">47.5%</td><td></td><td class="g">$88.92</td><td></td></tr></tbody>
-      </table>
-      </div>
-      <div class="pb-section">
-        <div class="pb-header"><span class="ct" style="font-size:11px;">Payback Progress</span>
-          <div class="sort-btns">
-            <button class="sb active" onclick="sortPB('ira','alpha',this)">A→Z</button>
-            <button class="sb" onclick="sortPB('ira','pct-desc',this)">% High→Low</button>
-            <button class="sb" onclick="sortPB('ira','pct-asc',this)">% Low→High</button>
-          </div>
-        </div>
-        <div class="pb-grid" id="pb-ira"></div>
-      </div>
-    </div>
-    <div class="rp">
-      <div class="card">
-        <div class="ch"><span class="ct">Weekly Div Received</span><span class="bdg">Actual · 8 weeks</span></div>
-        <div class="chart-outer">
-          <div class="chart-inner">
-            <div class="y-axis"><span class="y-label">$120</span><span class="y-label">$90</span><span class="y-label">$60</span><span class="y-label">$30</span><span class="y-label">$0</span></div>
-            <div class="chart-body">
-              <div class="bars-area">
-                <div class="bar-col"><div class="bar" style="height:77%"></div></div>
-                <div class="bar-col"><div class="bar" style="height:81%"></div></div>
-                <div class="bar-col"><div class="bar" style="height:68%"></div></div>
-                <div class="bar-col"><div class="bar" style="height:69%"></div></div>
-                <div class="bar-col"><div class="bar" style="height:72%"></div></div>
-                <div class="bar-col"><div class="bar" style="height:80%"></div></div>
-                <div class="bar-col"><div class="bar" style="height:90%"></div></div>
-                <div class="bar-col"><div class="bar" style="height:100%"></div></div>
-                <svg class="chart-svg" id="trend-svg-ira"></svg>
-              </div>
-              <div class="x-labels"><div class="x-lbl">Mar17</div><div class="x-lbl">Mar24</div><div class="x-lbl">Mar31</div><div class="x-lbl">Apr7</div><div class="x-lbl">Apr14</div><div class="x-lbl">Apr21</div><div class="x-lbl">Apr28</div><div class="x-lbl">May5</div></div>
-            </div>
-          </div>
-          <div class="trend-note"><span class="trend-swatch"></span> 8-week average</div>
-          <div class="chart-foot">
-            <div><div class="cfl">This week</div><div class="cfv g">$109.47</div></div>
-            <div style="text-align:right"><div class="cfl">8-week avg</div><div class="cfv" style="color:#fff">$97.44</div></div>
-          </div>
-        </div>
-      </div>
-      <div class="card">
-        <div class="ch"><span class="ct">Div Forecast</span>
-          <div class="sort-btns">
-            <button class="sb active" onclick="sortCal('ira','alpha',this)">A→Z</button>
-            <button class="sb" onclick="sortCal('ira','date',this)">By Date</button>
-          </div>
-        </div>
-        <div class="calnote">Dates = day cash deposits to account</div>
-        <div class="cal-body" id="cal-ira"></div>
-        <div class="caltot">Week total <span>$109.47</span></div>
-      </div>
-    </div>
-  </div>
-</div>
+<div id="panel-indiv" class="panel on"></div>
+<div id="panel-ira" class="panel"></div>
 
 <script>
-const pbData={indiv:[{tk:'NVDY',recv:10683,cost:25828,pct:41.4},{tk:'PLTY',recv:3020,cost:7719,pct:39.1},{tk:'LFGY',recv:3057,cost:8118,pct:37.7},{tk:'BABO',recv:6149,cost:16752,pct:36.7},{tk:'CHPY',recv:3447,cost:10955,pct:31.5}],ira:[{tk:'APLY',recv:1670,cost:5851,pct:28.5},{tk:'CONY',recv:3032,cost:4348,pct:69.7},{tk:'NVDY',recv:2393,cost:4753,pct:50.4}]};
-// ── DYNAMIC CALENDAR DATA ───────────────────────────────────
-function getUpcomingDates() {
-  const now = new Date();
-  const day = now.getDay(); // 0=Sun,1=Mon,2=Tue,3=Wed,4=Thu,5=Fri,6=Sat
-  // Find the upcoming Wednesday (Group1 pay day = Thu)
-  const daysToWed = day <= 3 ? 3 - day : 10 - day;
-  const daysToThu = day <= 4 ? 4 - day : 11 - day;
-  const daysToFri = day <= 5 ? 5 - day : 12 - day;
-  const wed = new Date(now); wed.setDate(now.getDate() + daysToWed);
-  const thu = new Date(now); thu.setDate(now.getDate() + daysToThu);
-  const fri = new Date(now); fri.setDate(now.getDate() + daysToFri);
-  const fmt = d => d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
-  const isPaid = d => d <= now;
-  return { wed, thu, fri, fmt, isPaid };
+// ── LIVE DATA INJECTED FROM SHEET ───────────────────────────
+const LIVE = {
+  indiv:         ${indivJson},
+  ira:           ${iraJson},
+  watchlist:     ${watchJson},
+  indivTot:      ${JSON.stringify(it)},
+  iraTot:        ${JSON.stringify(rt)},
+  indivClosedNet:${indivClosedNet},
+  iraClosedNet:  ${iraClosedNet},
+};
+
+// ── HELPERS ─────────────────────────────────────────────────
+function f$(n)  { return (n<0?'-$':'$')+Math.abs(Math.round(n)).toLocaleString(); }
+function fp(n)  { return (n>=0?'+':'')+n.toFixed(1)+'%'; }
+function gc(n)  { return n>=0?'var(--g)':'var(--rd)'; }
+
+// ── RENDER POSITIONS TABLE ───────────────────────────────────
+function renderPositions(positions, watchlist) {
+  const rows = positions.map((p,i) => {
+    const exCls = p.exDay==='WED'?'wed':p.exDay==='MON'?'mon':p.exDay==='TUE'?'tue':'thu';
+    return '<tr>'
+      +'<td><span class="tk">'+p.tk+'</span><span class="exd '+exCls+'">'+p.exDay+'</span></td>'
+      +'<td>'+p.shares.toLocaleString()+'</td>'
+      +'<td>$'+p.price.toFixed(2)+'</td>'
+      +'<td>'+f$(p.val)+'</td>'
+      +'<td style="color:'+gc(p.pl)+'">'+f$(p.pl)+'</td>'
+      +'<td class="g">'+f$(p.divs)+'</td>'
+      +'<td style="color:'+gc(p.net)+'">'+f$(p.net)+'</td>'
+      +'<td style="color:'+gc(p.retPct)+'">'+fp(p.retPct)+'</td>'
+      +'<td class="g">'+p.pbPct.toFixed(1)+'%</td>'
+      +'<td>$'+p.avg.toFixed(4)+'</td>'
+      +'<td class="g">$'+Math.round(p.fcstWk)+'</td>'
+      +'<td>'+p.yield_.toFixed(1)+'%</td>'
+      +'</tr>';
+  }).join('');
+  const watchRows = (watchlist||[]).map(w => {
+    const exCls = w.exDay==='WED'?'wed':w.exDay==='MON'?'mon':w.exDay==='TUE'?'tue':'thu';
+    return '<tr class="z">'
+      +'<td><span class="tk">'+w.tk+'</span><span class="exd '+exCls+'">'+w.exDay+'</span></td>'
+      +'<td class="dm">—</td><td>$'+w.price.toFixed(2)+'</td>'
+      +'<td class="dm">—</td><td class="dm">—</td><td class="dm">—</td>'
+      +'<td class="dm">—</td><td class="dm">—</td><td class="dm">—</td>'
+      +'<td>$'+w.avg.toFixed(4)+'</td><td class="dm">—</td><td></td>'
+      +'</tr>';
+  }).join('');
+  return rows + watchRows;
 }
 
-const { wed, thu, fri, fmt, isPaid } = getUpcomingDates();
+function renderTotRow(tot) {
+  return '<tr style="background:var(--s2);border-top:1px solid var(--bdr2);">'
+    +'<td colspan="3" style="color:var(--tx2);font-size:9px;text-transform:uppercase;">Total</td>'
+    +'<td>'+f$(tot.val)+'</td>'
+    +'<td style="color:'+gc(tot.pl||0)+'">'+f$(tot.pl||0)+'</td>'
+    +'<td class="g">'+f$(tot.divs)+'</td>'
+    +'<td style="color:'+gc(tot.net)+'">'+f$(tot.net)+'</td>'
+    +'<td style="color:'+gc(tot.net)+'">'+fp(tot.net/tot.cost*100)+'</td>'
+    +'<td class="g">'+(tot.divs/tot.cost*100).toFixed(1)+'%</td>'
+    +'<td></td><td class="g">$'+Math.round(tot.fcstWk)+'</td><td></td>'
+    +'</tr>';
+}
 
-const calData = {
-  indiv: [
-    {tk:'CHPY', date:fmt(thu), paid:isPaid(thu), pps:'$0.6024/sh', amt:'+$120.48'},
-    {tk:'LFGY', date:fmt(thu), paid:isPaid(thu), pps:'$0.2513/sh', amt:'+$50.26'},
-    {tk:'BABO', date:fmt(fri), paid:isPaid(fri), pps:'$0.0924/sh', amt:'+$92.40'},
-    {tk:'NVDY', date:fmt(fri), paid:isPaid(fri), pps:'$0.1281/sh', amt:'+$192.15'},
-    {tk:'PLTY', date:fmt(fri), paid:isPaid(fri), pps:'$0.2708/sh', amt:'+$27.08'},
-  ],
-  ira: [
-    {tk:'APLY', date:fmt(fri), paid:isPaid(fri), pps:'$0.1033/sh', amt:'+$46.49'},
-    {tk:'CONY', date:fmt(fri), paid:isPaid(fri), pps:'$0.4464/sh', amt:'+$24.55'},
-    {tk:'NVDY', date:fmt(fri), paid:isPaid(fri), pps:'$0.1281/sh', amt:'+$38.43'},
-  ]
-};
-function renderPB(a,items){document.getElementById('pb-'+a).innerHTML=items.map(d=>'<div class="pb-col"><div style="display:flex;justify-content:space-between;align-items:baseline;"><span class="pb-tk">'+d.tk+'</span><span class="pb-pct">'+d.pct+'%</span></div><div class="pb-nums"><span>$'+d.recv.toLocaleString()+'</span><span>of $'+d.cost.toLocaleString()+'</span></div><div class="pb-track"><div class="pb-fill" style="width:'+d.pct+'%"></div></div></div>').join('');}
-function sortPB(a,mode,btn){btn.closest('.sort-btns').querySelectorAll('.sb').forEach(b=>b.classList.remove('active'));btn.classList.add('active');const items=[...pbData[a]];if(mode==='pct-desc')items.sort((a,b)=>b.pct-a.pct);else if(mode==='pct-asc')items.sort((a,b)=>a.pct-b.pct);else items.sort((a,b)=>a.tk.localeCompare(b.tk));renderPB(a,items);}
-function renderCal(a,items){document.getElementById('cal-'+a).innerHTML=items.map(d=>'<div class="cr"><span class="ctk">'+d.tk+'</span><span class="cd">'+d.date+' · '+d.pps+'</span><span class="ca">'+d.amt+'</span><span class="cs '+(d.paid?'paid':'pend')+'">'+(d.paid?'PAID':'PENDING')+'</span></div>').join('');}
-function sortCal(a,mode,btn){btn.closest('.sort-btns').querySelectorAll('.sb').forEach(b=>b.classList.remove('active'));btn.classList.add('active');const items=[...calData[a]];if(mode==='date')items.sort((a,b)=>a.ds-b.ds||a.tk.localeCompare(b.tk));else items.sort((a,b)=>a.tk.localeCompare(b.tk));renderCal(a,items);}
-function drawTrend(id,pct){const s=document.getElementById(id);if(!s)return;const y=(1-pct/100)*100;s.innerHTML='<line x1="0" y1="'+y+'%" x2="100%" y2="'+y+'%" stroke="#ffb74d" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.75"/>';}
-function switchTab(n,el){document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));document.getElementById('panel-'+n).classList.add('on');el.classList.add('on');}
-renderPB('indiv',[...pbData.indiv].sort((a,b)=>b.pct-a.pct));
-renderPB('ira',[...pbData.ira].sort((a,b)=>a.tk.localeCompare(b.tk)));
-renderCal('indiv',[...calData.indiv].sort((a,b)=>a.ds-b.ds||a.tk.localeCompare(b.tk)));
-renderCal('ira',[...calData.ira].sort((a,b)=>a.tk.localeCompare(b.tk)));
-window.addEventListener('load',()=>{drawTrend('trend-svg-indiv',75.5);drawTrend('trend-svg-ira',81.2);});
+// ── RENDER KPIs ──────────────────────────────────────────────
+function kpi(label, value, sub, accent) {
+  return '<div class="kpi '+(accent||'')+'">'
+    +'<div class="kl">'+label+'</div>'
+    +'<div class="kv '+(accent?accent.replace('k',''):'')+'">'+value+'</div>'
+    +'<div class="ks">'+sub+'</div>'
+    +'</div>';
+}
+
+// ── RENDER PAYBACK ───────────────────────────────────────────
+function renderPB(acct, items) {
+  document.getElementById('pb-'+acct).innerHTML = items.map(p =>
+    '<div class="pb-col">'
+    +'<div style="display:flex;justify-content:space-between;align-items:baseline;">'
+    +'<span class="pb-tk">'+p.tk+'</span><span class="pb-pct">'+p.pbPct.toFixed(1)+'%</span></div>'
+    +'<div class="pb-nums"><span>'+f$(p.divs)+'</span><span>of '+f$(p.cost)+'</span></div>'
+    +'<div class="pb-track"><div class="pb-fill" style="width:'+p.pbPct.toFixed(1)+'%"></div></div>'
+    +'</div>'
+  ).join('');
+}
+function sortPB(acct,mode,btn){
+  btn.closest('.sort-btns').querySelectorAll('.sb').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const items=[...LIVE[acct]];
+  if(mode==='pct-desc')items.sort((a,b)=>b.pbPct-a.pbPct);
+  else if(mode==='pct-asc')items.sort((a,b)=>a.pbPct-b.pbPct);
+  else items.sort((a,b)=>a.tk.localeCompare(b.tk));
+  renderPB(acct,items);
+}
+
+// ── RENDER CALENDAR ──────────────────────────────────────────
+function getUpcomingDates() {
+  const now=new Date(), day=now.getDay();
+  const dToWed=day<=3?3-day:10-day, dToThu=day<=4?4-day:11-day, dToFri=day<=5?5-day:12-day;
+  const wed=new Date(now),thu=new Date(now),fri=new Date(now);
+  wed.setDate(now.getDate()+dToWed);
+  thu.setDate(now.getDate()+dToThu);
+  fri.setDate(now.getDate()+dToFri);
+  const fmt=d=>d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+  const paid=d=>d<=now;
+  return {wed,thu,fri,fmt,paid};
+}
+
+const calData = (() => {
+  const {thu,fri,fmt,paid} = getUpcomingDates();
+  const lastAvg = p => LIVE.indiv.find(x=>x.tk===p)||LIVE.ira.find(x=>x.tk===p)||{avg:0,shares:0};
+  const row = (tk,d,acct) => {
+    const p = (acct==='indiv'?LIVE.indiv:LIVE.ira).find(x=>x.tk===tk)||{avg:0,shares:0};
+    return {tk, date:fmt(d), paid:paid(d), pps:'$'+p.avg.toFixed(4)+'/sh', amt:'+$'+(p.avg*p.shares).toFixed(2)};
+  };
+  return {
+    indiv: [row('CHPY',thu,'indiv'),row('LFGY',thu,'indiv'),row('BABO',fri,'indiv'),row('NVDY',fri,'indiv'),row('PLTY',fri,'indiv')],
+    ira:   [row('APLY',fri,'ira'),row('CONY',fri,'ira'),row('NVDY',fri,'ira')]
+  };
+})();
+
+function renderCal(acct,items){
+  document.getElementById('cal-'+acct).innerHTML=items.map(d=>
+    '<div class="cr"><span class="ctk">'+d.tk+'</span><span class="cd">'+d.date+' · '+d.pps+'</span>'
+    +'<span class="ca">'+d.amt+'</span>'
+    +'<span class="cs '+(d.paid?'paid':'pend')+'">'+(d.paid?'PAID':'PENDING')+'</span></div>'
+  ).join('');
+}
+function sortCal(acct,mode,btn){
+  btn.closest('.sort-btns').querySelectorAll('.sb').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const items=[...calData[acct]];
+  if(mode==='date')items.sort((a,b)=>new Date(a.date)-new Date(b.date)||a.tk.localeCompare(b.tk));
+  else items.sort((a,b)=>a.tk.localeCompare(b.tk));
+  renderCal(acct,items);
+}
+
+// ── DRAW TREND ───────────────────────────────────────────────
+function drawTrend(id,pct){
+  const s=document.getElementById(id);if(!s)return;
+  const y=(1-pct/100)*100;
+  s.innerHTML='<line x1="0" y1="'+y+'%" x2="100%" y2="'+y+'%" stroke="#ffb74d" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.75"/>';
+}
+
+// ── BUILD PANELS ─────────────────────────────────────────────
+function buildPanel(acct, positions, watchlist, tot, closedNet) {
+  const tRows = renderPositions(positions, watchlist);
+  const tTot  = renderTotRow(tot);
+  const indivFcstWk = Math.round(tot.fcstWk);
+
+  const panel = document.getElementById('panel-'+acct);
+  panel.innerHTML =
+    '<div class="kpis">'
+    +kpi('Portfolio Value',f$(tot.val),'Cost '+f$(tot.cost),'')
+    +kpi('Total Return',(tot.net>=0?'+':'')+f$(tot.net),fp(tot.net/tot.cost*100),'kb')
+    +kpi('Total Return — Closed',(closedNet>=0?'+':'')+f$(closedNet),fp(closedNet/tot.cost*100),'kp')
+    +kpi('Forecast / Week','$'+indivFcstWk,'2026 YTD avg','kb')
+    +kpi('Forecast / Month','$'+Math.round(indivFcstWk*4),'2026 YTD avg','ka')
+    +'</div>'
+    +'<div class="g2">'
+    +  '<div class="card">'
+    +    '<div class="ch"><span class="ct">Positions</span><span class="bdg">'+positions.length+' active'+(watchlist?(' · '+watchlist.length+' watchlist'):'')+'</span></div>'
+    +    '<div class="table-scroll"><table>'
+    +      '<thead><tr><th style="text-align:left">Ticker</th><th>Shares</th><th>Price</th><th>Curr Val</th><th>P/L</th><th>Dividends</th><th>P/L+Div</th><th>Tot Ret%</th><th>Payback%</th><th>YTD Avg/Wk</th><th>Fcst/Wk</th><th>Div Yield%</th></tr></thead>'
+    +      '<tbody>'+tRows+'</tbody>'
+    +      '<tbody class="tft">'+tTot+'</tbody>'
+    +    '</table></div>'
+    +    '<div class="pb-section">'
+    +      '<div class="pb-header"><span class="ct" style="font-size:11px;">Payback Progress</span>'
+    +        '<div class="sort-btns">'
+    +          '<button class="sb" onclick="sortPB(\''+acct+'\',\'alpha\',this)">A→Z</button>'
+    +          '<button class="sb active" onclick="sortPB(\''+acct+'\',\'pct-desc\',this)">% High→Low</button>'
+    +          '<button class="sb" onclick="sortPB(\''+acct+'\',\'pct-asc\',this)">% Low→High</button>'
+    +        '</div>'
+    +      '</div>'
+    +      '<div class="pb-grid" id="pb-'+acct+'"></div>'
+    +    '</div>'
+    +  '</div>'
+    +  '<div class="rp">'
+    +    '<div class="card">'
+    +      '<div class="ch"><span class="ct">Weekly Div Received</span><span class="bdg">Actual · 8 weeks</span></div>'
+    +      '<div class="chart-outer"><div class="chart-inner">'
+    +        '<div class="y-axis"><span class="y-label">High</span><span class="y-label"></span><span class="y-label">Avg</span><span class="y-label"></span><span class="y-label">$0</span></div>'
+    +        '<div class="chart-body"><div class="bars-area" id="bars-'+acct+'">'
+    +          '<div class="bar-col"><div class="bar" style="height:74%"></div></div>'
+    +          '<div class="bar-col"><div class="bar" style="height:79%"></div></div>'
+    +          '<div class="bar-col"><div class="bar" style="height:74%"></div></div>'
+    +          '<div class="bar-col"><div class="bar" style="height:69%"></div></div>'
+    +          '<div class="bar-col"><div class="bar" style="height:71%"></div></div>'
+    +          '<div class="bar-col"><div class="bar" style="height:74%"></div></div>'
+    +          '<div class="bar-col"><div class="bar" style="height:79%"></div></div>'
+    +          '<div class="bar-col"><div class="bar" style="height:100%"></div></div>'
+    +          '<svg class="chart-svg" id="trend-svg-'+acct+'"></svg>'
+    +        '</div>'
+    +        '<div class="x-labels"><div class="x-lbl">Mar17</div><div class="x-lbl">Mar24</div><div class="x-lbl">Mar31</div><div class="x-lbl">Apr7</div><div class="x-lbl">Apr14</div><div class="x-lbl">Apr21</div><div class="x-lbl">Apr28</div><div class="x-lbl">May5</div></div>'
+    +        '</div></div>'
+    +      '<div class="trend-note"><span class="trend-swatch"></span> 8-week average</div>'
+    +      '<div class="chart-foot"><div><div class="cfl">8-wk avg</div><div class="cfv g">$'+indivFcstWk+'</div></div></div>'
+    +      '</div>'
+    +    '</div>'
+    +    '<div class="card">'
+    +      '<div class="ch"><span class="ct">Div Forecast</span>'
+    +        '<div class="sort-btns">'
+    +          '<button class="sb active" onclick="sortCal(\''+acct+'\',\'alpha\',this)">A→Z</button>'
+    +          '<button class="sb" onclick="sortCal(\''+acct+'\',\'date\',this)">By Date</button>'
+    +        '</div>'
+    +      '</div>'
+    +      '<div class="calnote">Dates = day cash deposits to account</div>'
+    +      '<div class="cal-body" id="cal-'+acct+'"></div>'
+    +      '<div class="caltot">Week total <span>$'+Math.round(tot.fcstWk)+'</span></div>'
+    +    '</div>'
+    +  '</div>'
+    +'</div>';
+
+  renderPB(acct, [...positions].sort((a,b)=>b.pbPct-a.pbPct));
+  renderCal(acct, [...calData[acct]].sort((a,b)=>a.tk.localeCompare(b.tk)));
+}
+
+function switchTab(n,el){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  document.getElementById('panel-'+n).classList.add('on');
+  el.classList.add('on');
+}
+
+// ── INIT ─────────────────────────────────────────────────────
+document.getElementById('lastUpdate').textContent = 'Updated '+new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+buildPanel('indiv', LIVE.indiv, LIVE.watchlist, LIVE.indivTot, LIVE.indivClosedNet);
+buildPanel('ira',   LIVE.ira,   null,           LIVE.iraTot,   LIVE.iraClosedNet);
+window.addEventListener('load', () => {
+  drawTrend('trend-svg-indiv', 75);
+  drawTrend('trend-svg-ira',   75);
+});
 </script>
 </body>
 </html>`;
