@@ -12,7 +12,6 @@ function runWeeklyUpdate() {
   } else {
     updateDividendTotals(ss, divs);
   }
-  updatePrices(ss);
   const avgs = getYtdAverages(ss);
   const data = getPortfolioData(ss, avgs);
   sendEmail(getDashboardHtml(data, avgs));
@@ -103,23 +102,8 @@ function getYtdAverages(ss) {
   return avgs;
 }
 
-function updatePrices(ss) {
-  const sheet=ss.getSheetByName(CONFIG.SHEET_NAME)||ss.getActiveSheet();
-  const data=sheet.getDataRange().getValues();
-  const tks=['BABO','CHPY','LFGY','NVDY','PLTY','APLY','CONY','GOOW','HOOW','PLTW','WPAY'];
-  for(let i=1;i<data.length;i++) {
-    if(tks.includes(data[i][0])) try{sheet.getRange(i+1,3).setFormula(`=GOOGLEFINANCE("${data[i][0]}")`)}catch(e){}
-  }
-  // Wait for GOOGLEFINANCE to resolve
-  SpreadsheetApp.flush();
-  Utilities.sleep(3000);
-}
-
 // ─── READ LIVE PORTFOLIO DATA FROM SHEET ────────────────────
 // Sheet columns: A=Ticker, B=Shares, C=Price, D=CostBasis, E=Dividends
-// INDIV rows: BABO,CHPY,LFGY,NVDY,PLTY (A-Z)
-// IRA rows: APLY,CONY,NVDY (after blank row)
-// Static data that never changes:
 const STATIC = {
   INDIV: [
     {tk:'BABO', shares:1000, cost:16751.52, exDay:'THU', ytdAvgKey:'BABO'},
@@ -141,62 +125,118 @@ const STATIC = {
   IRA_CLOSED_NET:   1559,
 };
 
-function getPortfolioData(ss, avgs) {
-  const sheet = ss.getSheetByName(CONFIG.SHEET_NAME) || ss.getActiveSheet();
-  const rows  = sheet.getDataRange().getValues();
+function getLivePrices() {
+  // Fetch current prices directly via Google Finance — more reliable than reading Sheet formulas
+  const tickers = ['BABO','CHPY','LFGY','NVDY','PLTY','APLY','CONY','GOOW','HOOW','PLTW','WPAY'];
+  const prices = {};
+  tickers.forEach(tk => {
+    try {
+      const data = FinanceApp ? FinanceApp.getStockInfo(tk) : null;
+      if (data && data.price) {
+        prices[tk] = parseFloat(data.price);
+      }
+    } catch(e) {}
+  });
 
-  // Build a map of ticker → {price, dividends} from sheet
-  const sheetData = {};
-  for (let i = 1; i < rows.length; i++) {
-    const tk = rows[i][0];
-    if (!tk) continue;
-    sheetData[tk] = sheetData[tk] || [];
-    sheetData[tk].push({
-      shares: rows[i][1],
-      price:  parseFloat(rows[i][2]) || 0,
-      cost:   parseFloat(rows[i][3]) || 0,
-      divs:   parseFloat(rows[i][4]) || 0,
+  // Fallback: read from Sheet if FinanceApp unavailable
+  if (Object.keys(prices).length === 0) {
+    try {
+      const ss    = getOrCreateSheet();
+      const sheet = ss.getSheetByName(CONFIG.SHEET_NAME) || ss.getActiveSheet();
+      // Force recalculate
+      SpreadsheetApp.flush();
+      const rows  = sheet.getDataRange().getValues();
+      for (let i = 1; i < rows.length; i++) {
+        const tk  = rows[i][0];
+        const val = rows[i][2];
+        if (tk && val) {
+          // GOOGLEFINANCE returns a 2D array object in some contexts — handle both
+          if (typeof val === 'number' && val > 0) {
+            prices[tk] = val;
+          } else if (Array.isArray(val)) {
+            prices[tk] = parseFloat(val[1][1]) || 0;
+          }
+        }
+      }
+    } catch(e) {
+      Logger.log('Price read error: '+e.message);
+    }
+  }
+
+  // Last resort: use Yahoo Finance via URL fetch
+  if (Object.keys(prices).length < 3) {
+    tickers.forEach(tk => {
+      if (prices[tk]) return;
+      try {
+        const url  = `https://query1.finance.yahoo.com/v8/finance/chart/${tk}?interval=1d&range=1d`;
+        const resp = UrlFetchApp.fetch(url, {muteHttpExceptions:true});
+        const json = JSON.parse(resp.getContentText());
+        const px   = json?.chart?.result?.[0]?.meta?.regularMarketPrice;
+        if (px) prices[tk] = parseFloat(px);
+      } catch(e) {
+        Logger.log(`Yahoo price error for ${tk}: ${e.message}`);
+      }
     });
   }
 
-  function calcPos(p, avgs) {
-    const price  = sheetData[p.tk] ? sheetData[p.tk].find(r=>r.shares===p.shares)?.price || 0 : 0;
-    const divs   = sheetData[p.tk] ? sheetData[p.tk].find(r=>r.shares===p.shares)?.divs  || 0 : 0;
+  Logger.log('Prices: '+JSON.stringify(prices));
+  return prices;
+}
+
+function getDividendsFromSheet(ss) {
+  const sheet = ss.getSheetByName(CONFIG.SHEET_NAME) || ss.getActiveSheet();
+  const rows  = sheet.getDataRange().getValues();
+  const divs  = {};
+  for (let i = 1; i < rows.length; i++) {
+    const tk     = rows[i][0];
+    const shares = rows[i][1];
+    const d      = parseFloat(rows[i][4]) || 0;
+    if (tk && shares > 0) {
+      // Key by ticker+shares to distinguish NVDY INDIV vs IRA
+      divs[tk+'_'+shares] = d;
+      // Also store by ticker alone (last one wins — use shares match in calcPos)
+      if (!divs[tk]) divs[tk] = {};
+      divs[tk][shares] = d;
+    }
+  }
+  return divs;
+}
+
+function getPortfolioData(ss, avgs) {
+  const prices = getLivePrices();
+  const divMap = getDividendsFromSheet(ss);
+  const a      = avgs || {};
+
+  function calcPos(p) {
+    const price  = prices[p.tk] || 0;
+    const divs   = (divMap[p.tk] && divMap[p.tk][p.shares]) ? divMap[p.tk][p.shares] : 0;
     const val    = p.shares * price;
     const pl     = val - p.cost;
     const net    = pl + divs;
     const retPct = (net / p.cost) * 100;
     const pbPct  = (divs / p.cost) * 100;
-    const avg    = avgs[p.ytdAvgKey] || 0;
+    const avg    = a[p.ytdAvgKey] || 0;
     const fcstWk = avg * p.shares;
     const yield_ = price > 0 ? (avg * 52 / price) * 100 : 0;
     return { ...p, price, divs, val, pl, net, retPct, pbPct, avg, fcstWk, yield_ };
   }
 
-  const a = avgs || {};
-  const indiv = STATIC.INDIV.map(p => calcPos(p, a));
-  const ira   = STATIC.IRA.map(p => calcPos(p, a));
-
-  // Watchlist prices
+  const indiv    = STATIC.INDIV.map(calcPos);
+  const ira      = STATIC.IRA.map(calcPos);
   const watchlist = STATIC.WATCHLIST.map(p => ({
-    ...p,
-    price: sheetData[p.tk] ? (sheetData[p.tk][0]?.price || 0) : 0,
-    avg: a[p.tk] || 0,
+    ...p, price: prices[p.tk] || 0, avg: a[p.tk] || 0,
   }));
 
-  // Totals
   const sum = arr => arr.reduce((s,p) => ({
-    val:  s.val  + p.val,
-    cost: s.cost + p.cost,
-    divs: s.divs + p.divs,
-    net:  s.net  + p.net,
+    val:    s.val    + p.val,
+    cost:   s.cost   + p.cost,
+    divs:   s.divs   + p.divs,
+    net:    s.net    + p.net,
+    pl:     s.pl     + p.pl,
     fcstWk: s.fcstWk + p.fcstWk,
-  }), {val:0,cost:0,divs:0,net:0,fcstWk:0});
+  }), {val:0,cost:0,divs:0,net:0,pl:0,fcstWk:0});
 
-  const indivTot = sum(indiv);
-  const iraTot   = sum(ira);
-
-  return { indiv, ira, watchlist, indivTot, iraTot };
+  return { indiv, ira, watchlist, indivTot: sum(indiv), iraTot: sum(ira) };
 }
 
 // ─── FORMATTING HELPERS ──────────────────────────────────────
