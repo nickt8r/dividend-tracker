@@ -49,9 +49,60 @@ const SEED_PPS = {
 // ── ENTRY POINT ──────────────────────────────────────────────
 function runWeeklyUpdate() {
   Logger.log('=== Dividend Tracker Update Starting ===');
-  const data = buildPortfolioData();
-  sendEmail(getDashboardHtml(data));
-  Logger.log('=== Done ===');
+  try {
+    const data = buildPortfolioData();
+    Logger.log('Portfolio data built. INDIV positions: ' + data.indiv.length);
+    Logger.log('INDIV total val: ' + data.indivTot.val);
+    Logger.log('BABO price: ' + data.indiv[0].price + ' divs: ' + data.indiv[0].divs);
+    const html = getDashboardHtml(data);
+    Logger.log('HTML length: ' + html.length);
+    if (html.length < 500) {
+      Logger.log('ERROR: HTML too short, something went wrong');
+      Logger.log('HTML content: ' + html);
+      return;
+    }
+    sendEmail(html);
+    Logger.log('=== Done ===');
+  } catch(e) {
+    Logger.log('FATAL ERROR: ' + e.message + '\n' + e.stack);
+    // Send error notification email
+    GmailApp.sendEmail(CONFIG.EMAIL, 'Dividend Tracker ERROR', 'Script failed: ' + e.message + '\n\n' + e.stack);
+  }
+}
+
+// ── DIAGNOSTIC — run this first to check data ────────────────
+function testDataFetch() {
+  Logger.log('=== Testing Yahoo Finance fetch ===');
+  try {
+    const d = yahooFetch('BABO');
+    const price = d.chart.result[0].meta.regularMarketPrice;
+    const divs  = Object.values(d.chart.result[0].events?.dividends || {});
+    Logger.log('BABO price: $' + price);
+    Logger.log('BABO dividends found: ' + divs.length);
+    Logger.log('Most recent: $' + divs[divs.length-1]?.amount + ' on ' + new Date(divs[divs.length-1]?.date*1000).toDateString());
+  } catch(e) {
+    Logger.log('Yahoo fetch FAILED: ' + e.message);
+  }
+
+  Logger.log('=== Testing buildPortfolioData ===');
+  try {
+    const data = buildPortfolioData();
+    Logger.log('indiv positions: ' + data.indiv.length);
+    data.indiv.forEach(p => Logger.log(p.tk + ': price=$' + p.price + ' divs=$' + p.divs.toFixed(2) + ' val=$' + p.val.toFixed(2)));
+    Logger.log('indivTot val: $' + data.indivTot.val.toFixed(2));
+  } catch(e) {
+    Logger.log('buildPortfolioData FAILED: ' + e.message + '\n' + e.stack);
+  }
+
+  Logger.log('=== Testing getDashboardHtml ===');
+  try {
+    const data = buildPortfolioData();
+    const html = getDashboardHtml(data);
+    Logger.log('HTML length: ' + html.length + ' chars');
+    Logger.log('First 200 chars: ' + html.substring(0, 200));
+  } catch(e) {
+    Logger.log('getDashboardHtml FAILED: ' + e.message + '\n' + e.stack);
+  }
 }
 
 // ── YAHOO FINANCE FETCH ───────────────────────────────────────
