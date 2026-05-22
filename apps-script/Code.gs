@@ -30,8 +30,8 @@ const POSITIONS = {
     {tk:'CONY', shares:55,  cost:4348.00,  exDay:'THU'},
     {tk:'NVDY', shares:300, cost:4753.09,  exDay:'THU'},
   ],
-  INDIV_CLOSED_NET: -634,
-  IRA_CLOSED_NET:   1559,
+  INDIV_CLOSED_LOSS: 12648,
+  IRA_CLOSED_LOSS:   1943,
 };
 
 // ── SEED: known dividends paid per share Jan 1 – May 8 2026 ──
@@ -213,13 +213,17 @@ function buildPortfolioData() {
   const indivTot = sum(indiv);
   const iraTot   = sum(ira);
 
+  // Total Return incl. closed = live open net minus locked-in closed losses
+  const indivClosedNet = indivTot.net - POSITIONS.INDIV_CLOSED_LOSS;
+  const iraClosedNet   = iraTot.net   - POSITIONS.IRA_CLOSED_LOSS;
+
   return {
     indiv, ira, watchlist,
     indivTot, iraTot,
     indivRecent: recentPayments(POSITIONS.INDIV),
     iraRecent:   recentPayments(POSITIONS.IRA),
-    indivClosedNet: POSITIONS.INDIV_CLOSED_NET,
-    iraClosedNet:   POSITIONS.IRA_CLOSED_NET,
+    indivClosedNet,
+    iraClosedNet,
   };
 }
 
@@ -353,7 +357,7 @@ function getDashboardHtml(d) {
   <tr><td colspan="2" style="padding-bottom:12px;"><table width="100%" cellpadding="0" cellspacing="0"><tr>
     ${kpi('Portfolio Value',fv(it.val),'Cost: '+fv(it.cost),'')}
     ${kpi('Total Return',f$(it.net),fp(it.net/it.cost*100),gc(it.net))}
-    ${kpi('Closed Positions',f$(d.indivClosedNet),fp(d.indivClosedNet/it.cost*100),gc(d.indivClosedNet))}
+    ${kpi('Total Return (All-In)',f$(d.indivClosedNet),fp(d.indivClosedNet/it.cost*100),gc(d.indivClosedNet))}
     ${kpi('Forecast / Week',fv(it.fcstWk),'2026 YTD avg','#64b5f6')}
     ${kpi('Forecast / Month',fv(it.fcstWk*4),'2026 YTD avg','#ffd54f')}
   </tr></table></td></tr>
@@ -398,7 +402,7 @@ function getDashboardHtml(d) {
   <tr><td colspan="2" style="padding-bottom:12px;"><table width="100%" cellpadding="0" cellspacing="0"><tr>
     ${kpi('Portfolio Value',fv(rt.val),'Cost: '+fv(rt.cost),'')}
     ${kpi('Total Return',f$(rt.net),fp(rt.net/rt.cost*100),gc(rt.net))}
-    ${kpi('Closed Positions',f$(d.iraClosedNet),fp(d.iraClosedNet/rt.cost*100),gc(d.iraClosedNet))}
+    ${kpi('Total Return (All-In)',f$(d.iraClosedNet),fp(d.iraClosedNet/rt.cost*100),gc(d.iraClosedNet))}
     ${kpi('Forecast / Week',fv(rt.fcstWk),'2026 YTD avg','#64b5f6')}
     ${kpi('Forecast / Month',fv(rt.fcstWk*4),'2026 YTD avg','#ffd54f')}
   </tr></table></td></tr>

@@ -109,7 +109,7 @@ function buildPanel(acct, positions, watchlist, tot, closed) {
   var kpis = '<div class="kpis">'
     +'<div class="kpi"><div class="kl">Portfolio Value</div><div class="kv">'+fv(tot.val)+'</div><div class="ks">Cost '+fv(tot.cost)+'</div></div>'
     +'<div class="kpi"><div class="kl">Total Return</div><div class="kv" style="color:'+gc(tot.net)+'">'+f$(tot.net)+'</div><div class="ks">'+fp(tot.net/tot.cost*100)+'</div></div>'
-    +'<div class="kpi kp"><div class="kl">Total Return — Closed</div><div class="kv" style="color:'+gc(closed)+'">'+f$(closed)+'</div><div class="ks">'+fp(closed/tot.cost*100)+'</div></div>'
+    +'<div class="kpi kp"><div class="kl">Total Return (All-In)</div><div class="kv" style="color:'+gc(closed)+'">'+f$(closed)+'</div><div class="ks">'+fp(closed/tot.cost*100)+'</div></div>'
     +'<div class="kpi kb"><div class="kl">Forecast / Week</div><div class="kv" style="color:var(--b)">$'+fcstWk+'</div><div class="ks">2026 YTD avg</div></div>'
     +'<div class="kpi ka"><div class="kl">Forecast / Month</div><div class="kv" style="color:var(--am)">$'+Math.round(fcstWk*4)+'</div><div class="ks">2026 YTD avg</div></div>'
     +'</div>';
