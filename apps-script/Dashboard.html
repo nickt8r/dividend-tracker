@@ -63,9 +63,6 @@ td{padding:7px 9px;text-align:right;font-size:11px;}td:first-child{text-align:le
 .paid{background:rgba(0,229,160,.1);color:var(--g);border:1px solid rgba(0,229,160,.25);}
 .caltot{display:flex;justify-content:space-between;padding:8px 16px;background:var(--s2);border-top:1px solid var(--bdr2);font-size:10px;color:var(--tx2);}
 .caltot span{color:var(--g);font-family:var(--h);font-weight:700;}
-.ytd-grid{padding:10px 16px;}
-.ytd-row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--bdr);}
-.ytd-row:last-child{border:none;}
 </style>
 </head>
 <body>
@@ -108,6 +105,7 @@ function exCls(d){return d==='WED'?'wed':d==='MON'?'mon':d==='TUE'?'tue':'thu';}
 function buildPanel(acct, positions, watchlist, tot, closed) {
   var fcstWk = Math.round(tot.fcstWk);
 
+  // ── KPIs ──
   var kpis = '<div class="kpis">'
     +'<div class="kpi"><div class="kl">Portfolio Value</div><div class="kv">'+fv(tot.val)+'</div><div class="ks">Cost '+fv(tot.cost)+'</div></div>'
     +'<div class="kpi"><div class="kl">Total Return</div><div class="kv" style="color:'+gc(tot.net)+'">'+f$(tot.net)+'</div><div class="ks">'+fp(tot.net/tot.cost*100)+'</div></div>'
@@ -116,6 +114,7 @@ function buildPanel(acct, positions, watchlist, tot, closed) {
     +'<div class="kpi ka"><div class="kl">Forecast / Month</div><div class="kv" style="color:var(--am)">$'+Math.round(fcstWk*4)+'</div><div class="ks">2026 YTD avg</div></div>'
     +'</div>';
 
+  // ── POSITION ROWS ──
   var posRows = positions.map(function(p,i){
     var bg = i%2===0?'':'style="background:var(--s2)"';
     return '<tr '+bg+'>'
@@ -155,6 +154,7 @@ function buildPanel(acct, positions, watchlist, tot, closed) {
     +'<td></td><td class="g">$'+Math.round(tot.fcstWk)+'</td><td></td>'
     +'</tr>';
 
+  // ── PAYBACK ──
   var pbSorted = positions.slice().sort(function(a,b){return b.pbPct-a.pbPct;});
   var pbCols = pbSorted.map(function(p){
     return '<div class="pb-col">'
@@ -165,19 +165,43 @@ function buildPanel(acct, positions, watchlist, tot, closed) {
       +'</div>';
   }).join('');
 
-  var weekAgo = Date.now() - 8*24*60*60*1000;
+  // ── 8-WEEK CHART ──
+  var weeks = acct === 'indiv' ? LIVE.indivWeeks : LIVE.iraWeeks;
+  var maxWk = Math.max.apply(null, weeks.map(function(w){return w.total;}));
+  if(maxWk === 0) maxWk = 1;
+  var avgWk = weeks.reduce(function(s,w){return s+w.total;},0)/weeks.length;
+
+  var barHtml = weeks.map(function(w){
+    var h = Math.round((w.total/maxWk)*100);
+    return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px;">'
+      +'<div style="width:100%;background:var(--g);opacity:0.65;border-radius:2px 2px 0 0;height:'+h+'px;min-height:2px;"></div>'
+      +'<div style="font-size:8px;color:var(--tx3);">'+w.label+'</div>'
+      +'</div>';
+  }).join('');
+
+  var chartCard = '<div class="card">'
+    +'<div class="ch"><span class="ct">Weekly Div Received</span><span class="bdg">8 weeks</span></div>'
+    +'<div style="padding:14px;">'
+    +'<div style="display:flex;align-items:flex-end;gap:4px;height:110px;border-bottom:1px solid var(--bdr2);">'+barHtml+'</div>'
+    +'<div style="display:flex;justify-content:space-between;margin-top:10px;padding-top:10px;border-top:1px solid var(--bdr);">'
+    +'<div><div style="font-size:9px;color:var(--tx3);text-transform:uppercase;margin-bottom:3px;">This week</div>'
+    +'<div style="font-family:var(--h);font-size:16px;font-weight:700;color:var(--g);">+$'+Math.round(weeks[weeks.length-1].total)+'</div></div>'
+    +'<div style="text-align:right;"><div style="font-size:9px;color:var(--tx3);text-transform:uppercase;margin-bottom:3px;">8-wk avg</div>'
+    +'<div style="font-family:var(--h);font-size:16px;font-weight:700;color:#fff;">+$'+Math.round(avgWk)+'</div></div>'
+    +'</div></div>'
+    +'</div>';
+
+  // ── THIS WEEK'S PAYMENTS ──
   var calItems = [];
-  weeks.forEach(function(w){
-    // Only show the most recent week's payments
-    if(w === weeks[weeks.length-1] && w.total > 0){
-      positions.forEach(function(p){
-        if(p.divs > 0){
-          calItems.push({tk:p.tk, date:new Date(w.end), pps:p.ytdAvg, amt:p.ytdAvg*p.shares});
-        }
-      });
-    }
-  });
-  calItems.sort(function(a,b){return a.tk.localeCompare(b.tk);});
+  var lastWeek = weeks[weeks.length-1];
+  if(lastWeek && lastWeek.total > 0){
+    positions.forEach(function(p){
+      if(p.divs > 0){
+        calItems.push({tk:p.tk, date:new Date(lastWeek.end), pps:p.ytdAvg, amt:p.ytdAvg*p.shares});
+      }
+    });
+    calItems.sort(function(a,b){return a.tk.localeCompare(b.tk);});
+  }
 
   var calHtml = calItems.length ? calItems.map(function(p){
     return '<div class="cr">'
@@ -190,30 +214,7 @@ function buildPanel(acct, positions, watchlist, tot, closed) {
 
   var weekTotal = calItems.reduce(function(s,p){return s+p.amt;},0);
 
-  var weeks = acct === 'indiv' ? LIVE.indivWeeks : LIVE.iraWeeks;
-  var maxWk = Math.max.apply(null, weeks.map(function(w){return w.total;}));
-  if(maxWk === 0) maxWk = 1;
-  var avgWk = weeks.reduce(function(s,w){return s+w.total;},0)/weeks.length;
-  var barHtml = weeks.map(function(w){
-    var h = Math.round((w.total/maxWk)*100);
-    return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px;">'
-      +'<div style="width:100%;background:var(--g);opacity:0.65;border-radius:2px 2px 0 0;height:'+h+'px;min-height:2px;"></div>'
-      +'<div style="font-size:8px;color:var(--tx3);">'+w.label+'</div>'
-      +'</div>';
-  }).join('');
-
-  var chartCard = '<div class="card">'
-    +'<div class="ch"><span class="ct">Weekly Div Received</span><span class="bdg">8 weeks</span></div>'
-    +'<div style="padding:14px;">'
-    +'<div style="display:flex;align-items:flex-end;gap:4px;height:110px;border-bottom:1px solid var(--bdr2);padding-bottom:0;">'+barHtml+'</div>'
-    +'<div style="display:flex;justify-content:space-between;margin-top:10px;padding-top:10px;border-top:1px solid var(--bdr);">'
-    +'<div><div style="font-size:9px;color:var(--tx3);text-transform:uppercase;margin-bottom:3px;">This week</div>'
-    +'<div style="font-family:var(--h);font-size:16px;font-weight:700;color:var(--g);">+$'+Math.round(weeks[weeks.length-1].total)+'</div></div>'
-    +'<div style="text-align:right;"><div style="font-size:9px;color:var(--tx3);text-transform:uppercase;margin-bottom:3px;">8-wk avg</div>'
-    +'<div style="font-family:var(--h);font-size:16px;font-weight:700;color:#fff;">+$'+Math.round(avgWk)+'</div></div>'
-    +'</div></div>'
-    +'</div>';
-
+  // ── ASSEMBLE PANEL ──
   document.getElementById('panel-'+acct).innerHTML = kpis
     +'<div class="g2">'
     +'<div class="card">'
