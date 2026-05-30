@@ -537,15 +537,17 @@ function getInteractiveDashboard(data) {
   const d  = data;
   const it = d.indivTot, rt = d.iraTot;
   const t  = HtmlService.createTemplateFromFile('Dashboard');
-  t.indivJson      = JSON.stringify(d.indiv);
-  t.iraJson        = JSON.stringify(d.ira);
-  t.watchJson      = JSON.stringify(d.watchlist);
-  t.indivTotJson   = JSON.stringify(it);
-  t.iraTotJson     = JSON.stringify(rt);
-  t.indivClosed    = d.indivClosedNet;
-  t.iraClosed      = d.iraClosedNet;
-  t.indivWeeksJson = JSON.stringify(d.indivWeeks);
-  t.iraWeeksJson   = JSON.stringify(d.iraWeeks);
+  t.indivJson        = JSON.stringify(d.indiv);
+  t.iraJson          = JSON.stringify(d.ira);
+  t.watchJson        = JSON.stringify(d.watchlist);
+  t.indivTotJson     = JSON.stringify(it);
+  t.iraTotJson       = JSON.stringify(rt);
+  t.indivClosed      = d.indivClosedNet;
+  t.iraClosed        = d.iraClosedNet;
+  t.indivWeeksJson   = JSON.stringify(d.indivWeeks);
+  t.iraWeeksJson     = JSON.stringify(d.iraWeeks);
+  t.indivRecentJson  = JSON.stringify(d.indivRecent);
+  t.iraRecentJson    = JSON.stringify(d.iraRecent);
   return t.evaluate().getContent();
 }
 

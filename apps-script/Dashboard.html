@@ -85,15 +85,17 @@ td{padding:7px 9px;text-align:right;font-size:11px;}td:first-child{text-align:le
 
 <script>
 var LIVE = {
-  indiv:       <?!= indivJson ?>,
-  ira:         <?!= iraJson ?>,
-  watchlist:   <?!= watchJson ?>,
-  indivTot:    <?!= indivTotJson ?>,
-  iraTot:      <?!= iraTotJson ?>,
-  indivClosed: <?!= indivClosed ?>,
-  iraClosed:   <?!= iraClosed ?>,
-  indivWeeks:  <?!= indivWeeksJson ?>,
-  iraWeeks:    <?!= iraWeeksJson ?>,
+  indiv:        <?!= indivJson ?>,
+  ira:          <?!= iraJson ?>,
+  watchlist:    <?!= watchJson ?>,
+  indivTot:     <?!= indivTotJson ?>,
+  iraTot:       <?!= iraTotJson ?>,
+  indivClosed:  <?!= indivClosed ?>,
+  iraClosed:    <?!= iraClosed ?>,
+  indivWeeks:   <?!= indivWeeksJson ?>,
+  iraWeeks:     <?!= iraWeeksJson ?>,
+  indivRecent:  <?!= indivRecentJson ?>,
+  iraRecent:    <?!= iraRecentJson ?>,
 };
 
 function f$(n){return(n<0?'-$':'+$')+Math.abs(Math.round(n)).toLocaleString();}
@@ -191,28 +193,20 @@ function buildPanel(acct, positions, watchlist, tot, closed) {
     +'</div></div>'
     +'</div>';
 
-  // ── THIS WEEK'S PAYMENTS ──
-  var calItems = [];
-  var lastWeek = weeks[weeks.length-1];
-  if(lastWeek && lastWeek.total > 0){
-    positions.forEach(function(p){
-      if(p.divs > 0){
-        calItems.push({tk:p.tk, date:new Date(lastWeek.end), pps:p.ytdAvg, amt:p.ytdAvg*p.shares});
-      }
-    });
-    calItems.sort(function(a,b){return a.tk.localeCompare(b.tk);});
-  }
+  // ── THIS WEEK'S PAYMENTS — real per-share amounts from Yahoo ──
+  var recent = acct === 'indiv' ? LIVE.indivRecent : LIVE.iraRecent;
 
-  var calHtml = calItems.length ? calItems.map(function(p){
+  var calHtml = recent.length ? recent.map(function(p){
+    var d = new Date(p.date);
     return '<div class="cr">'
       +'<span class="ctk">'+p.tk+'</span>'
-      +'<span class="cd">'+p.date.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})+' · $'+p.pps.toFixed(4)+'/sh</span>'
+      +'<span class="cd">'+d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})+' · $'+p.pps.toFixed(4)+'/sh</span>'
       +'<span class="ca">+'+fv(p.amt)+'</span>'
       +'<span class="cs paid">PAID</span>'
       +'</div>';
   }).join('') : '<div style="padding:12px;color:var(--tx3);font-size:11px;">No payments this week</div>';
 
-  var weekTotal = calItems.reduce(function(s,p){return s+p.amt;},0);
+  var weekTotal = recent.reduce(function(s,p){return s+p.amt;},0);
 
   // ── ASSEMBLE PANEL ──
   document.getElementById('panel-'+acct).innerHTML = kpis
