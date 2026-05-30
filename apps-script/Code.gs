@@ -210,6 +210,41 @@ function buildPortfolioData() {
     return payments.sort((a,b)=>a.tk.localeCompare(b.tk));
   }
 
+  // 8-week history — group all payments by week (Mon–Sun buckets)
+  function eightWeekHistory(positions) {
+    // Build weekly buckets for last 8 weeks
+    const weeks = [];
+    const now = new Date();
+    for (let i = 7; i >= 0; i--) {
+      const weekEnd = new Date(now);
+      weekEnd.setDate(now.getDate() - (i * 7));
+      weekEnd.setHours(23,59,59,999);
+      const weekStart = new Date(weekEnd);
+      weekStart.setDate(weekEnd.getDate() - 6);
+      weekStart.setHours(0,0,0,0);
+      weeks.push({start: weekStart, end: weekEnd, total: 0, label: ''});
+    }
+
+    // Sum payments into buckets
+    positions.forEach(p => {
+      (yahoo[p.tk]?.divs || []).forEach(d => {
+        weeks.forEach(w => {
+          if (d.date >= w.start && d.date <= w.end) {
+            w.total += d.amount * p.shares;
+          }
+        });
+      });
+    });
+
+    // Label each week by its pay date
+    weeks.forEach(w => {
+      const d = new Date(w.end);
+      w.label = d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+    });
+
+    return weeks;
+  }
+
   const indivTot = sum(indiv);
   const iraTot   = sum(ira);
 
@@ -220,8 +255,10 @@ function buildPortfolioData() {
   return {
     indiv, ira, watchlist,
     indivTot, iraTot,
-    indivRecent: recentPayments(POSITIONS.INDIV),
-    iraRecent:   recentPayments(POSITIONS.IRA),
+    indivRecent:  recentPayments(POSITIONS.INDIV),
+    iraRecent:    recentPayments(POSITIONS.IRA),
+    indivWeeks:   eightWeekHistory(POSITIONS.INDIV),
+    iraWeeks:     eightWeekHistory(POSITIONS.IRA),
     indivClosedNet,
     iraClosedNet,
   };
@@ -373,6 +410,30 @@ function getDashboardHtml(d) {
   <tr><td colspan="2" style="padding-bottom:15px;">
     <table width="100%" cellpadding="0" cellspacing="0"><tr>
       <td width="55%" style="vertical-align:top;padding-right:8px;">
+        <div style="font-family:Arial,sans-serif;font-size:11px;font-weight:bold;color:#aaa;text-transform:uppercase;padding-bottom:6px;">Weekly Div Received — 8 Weeks</div>
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#2a2a2a;border:1px solid #444;border-radius:6px;">
+          <tr><td style="padding:14px;">
+            ${(()=>{
+              const weeks = d.indivWeeks;
+              const max = Math.max(...weeks.map(w=>w.total), 1);
+              const avg = weeks.reduce((s,w)=>s+w.total,0)/weeks.length;
+              const bars = weeks.map(w=>{
+                const h = Math.round((w.total/max)*80);
+                return `<td style="text-align:center;vertical-align:bottom;padding:0 3px;width:12%;">
+                  <div style="background-color:#4ade80;opacity:0.65;width:100%;height:${h}px;border-radius:2px 2px 0 0;min-height:2px;"></div>
+                  <div style="font-family:Arial,sans-serif;font-size:8px;color:#888;margin-top:3px;">${w.label}</div>
+                </td>`;
+              }).join('');
+              const avgPct = Math.round((avg/max)*80);
+              return `<table width="100%" cellpadding="0" cellspacing="0" style="border-bottom:1px solid #444;">
+                <tr style="height:80px;vertical-align:bottom;">${bars}</tr>
+              </table>
+              <div style="font-family:Arial,sans-serif;font-size:9px;color:#aaa;margin-top:6px;">8-wk avg: <span style="color:#fff;font-weight:bold;">+${fv(avg)}</span></div>`;
+            })()}
+          </td></tr>
+        </table>
+      </td>
+      <td width="45%" style="vertical-align:top;padding-left:8px;">
         <div style="font-family:Arial,sans-serif;font-size:11px;font-weight:bold;color:#aaa;text-transform:uppercase;padding-bottom:6px;">This Week's Payments</div>
         <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#2a2a2a;border:1px solid #444;border-radius:6px;">
           <tr><td style="padding:6px 0;">
@@ -382,16 +443,6 @@ function getDashboardHtml(d) {
               <td style="padding:8px 12px;font-family:Arial,sans-serif;font-size:13px;font-weight:bold;color:#4ade80;text-align:right;">+${fv(indivWeekTotal)}</td></tr>
             </table>
           </td></tr>
-        </table>
-      </td>
-      <td width="45%" style="vertical-align:top;padding-left:8px;">
-        <div style="font-family:Arial,sans-serif;font-size:11px;font-weight:bold;color:#aaa;text-transform:uppercase;padding-bottom:6px;">YTD Avg / Forecast</div>
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#2a2a2a;border:1px solid #444;border-radius:6px;">
-          ${d.indiv.map(p=>`<tr>
-            <td style="padding:8px 12px;font-family:Arial,sans-serif;font-size:12px;font-weight:bold;color:#fff;border-bottom:1px solid #333;">${p.tk}</td>
-            <td style="padding:8px 12px;font-family:Arial,sans-serif;font-size:11px;color:#aaa;text-align:right;border-bottom:1px solid #333;">$${p.ytdAvg.toFixed(4)}/sh avg</td>
-            <td style="padding:8px 12px;font-family:Arial,sans-serif;font-size:12px;color:#4ade80;text-align:right;border-bottom:1px solid #333;">$${Math.round(p.fcstWk)}/wk</td>
-          </tr>`).join('')}
         </table>
       </td>
     </tr></table>
@@ -419,6 +470,29 @@ function getDashboardHtml(d) {
   <tr><td colspan="2" style="padding-bottom:30px;">
     <table width="100%" cellpadding="0" cellspacing="0"><tr>
       <td width="55%" style="vertical-align:top;padding-right:8px;">
+        <div style="font-family:Arial,sans-serif;font-size:11px;font-weight:bold;color:#aaa;text-transform:uppercase;padding-bottom:6px;">Weekly Div Received — 8 Weeks</div>
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#2a2a2a;border:1px solid #444;border-radius:6px;">
+          <tr><td style="padding:14px;">
+            ${(()=>{
+              const weeks = d.iraWeeks;
+              const max = Math.max(...weeks.map(w=>w.total), 1);
+              const avg = weeks.reduce((s,w)=>s+w.total,0)/weeks.length;
+              const bars = weeks.map(w=>{
+                const h = Math.round((w.total/max)*80);
+                return `<td style="text-align:center;vertical-align:bottom;padding:0 3px;width:12%;">
+                  <div style="background-color:#4ade80;opacity:0.65;width:100%;height:${h}px;border-radius:2px 2px 0 0;min-height:2px;"></div>
+                  <div style="font-family:Arial,sans-serif;font-size:8px;color:#888;margin-top:3px;">${w.label}</div>
+                </td>`;
+              }).join('');
+              return `<table width="100%" cellpadding="0" cellspacing="0" style="border-bottom:1px solid #444;">
+                <tr style="height:80px;vertical-align:bottom;">${bars}</tr>
+              </table>
+              <div style="font-family:Arial,sans-serif;font-size:9px;color:#aaa;margin-top:6px;">8-wk avg: <span style="color:#fff;font-weight:bold;">+${fv(avg)}</span></div>`;
+            })()}
+          </td></tr>
+        </table>
+      </td>
+      <td width="45%" style="vertical-align:top;padding-left:8px;">
         <div style="font-family:Arial,sans-serif;font-size:11px;font-weight:bold;color:#aaa;text-transform:uppercase;padding-bottom:6px;">This Week's Payments</div>
         <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#2a2a2a;border:1px solid #444;border-radius:6px;">
           <tr><td style="padding:6px 0;">
@@ -428,16 +502,6 @@ function getDashboardHtml(d) {
               <td style="padding:8px 12px;font-family:Arial,sans-serif;font-size:13px;font-weight:bold;color:#4ade80;text-align:right;">+${fv(iraWeekTotal)}</td></tr>
             </table>
           </td></tr>
-        </table>
-      </td>
-      <td width="45%" style="vertical-align:top;padding-left:8px;">
-        <div style="font-family:Arial,sans-serif;font-size:11px;font-weight:bold;color:#aaa;text-transform:uppercase;padding-bottom:6px;">YTD Avg / Forecast</div>
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#2a2a2a;border:1px solid #444;border-radius:6px;">
-          ${d.ira.map(p=>`<tr>
-            <td style="padding:8px 12px;font-family:Arial,sans-serif;font-size:12px;font-weight:bold;color:#fff;border-bottom:1px solid #333;">${p.tk}</td>
-            <td style="padding:8px 12px;font-family:Arial,sans-serif;font-size:11px;color:#aaa;text-align:right;border-bottom:1px solid #333;">$${p.ytdAvg.toFixed(4)}/sh avg</td>
-            <td style="padding:8px 12px;font-family:Arial,sans-serif;font-size:12px;color:#4ade80;text-align:right;border-bottom:1px solid #333;">$${Math.round(p.fcstWk)}/wk</td>
-          </tr>`).join('')}
         </table>
       </td>
     </tr></table>
@@ -473,13 +537,15 @@ function getInteractiveDashboard(data) {
   const d  = data;
   const it = d.indivTot, rt = d.iraTot;
   const t  = HtmlService.createTemplateFromFile('Dashboard');
-  t.indivJson    = JSON.stringify(d.indiv);
-  t.iraJson      = JSON.stringify(d.ira);
-  t.watchJson    = JSON.stringify(d.watchlist);
-  t.indivTotJson = JSON.stringify(it);
-  t.iraTotJson   = JSON.stringify(rt);
-  t.indivClosed  = d.indivClosedNet;
-  t.iraClosed    = d.iraClosedNet;
+  t.indivJson      = JSON.stringify(d.indiv);
+  t.iraJson        = JSON.stringify(d.ira);
+  t.watchJson      = JSON.stringify(d.watchlist);
+  t.indivTotJson   = JSON.stringify(it);
+  t.iraTotJson     = JSON.stringify(rt);
+  t.indivClosed    = d.indivClosedNet;
+  t.iraClosed      = d.iraClosedNet;
+  t.indivWeeksJson = JSON.stringify(d.indivWeeks);
+  t.iraWeeksJson   = JSON.stringify(d.iraWeeks);
   return t.evaluate().getContent();
 }
 
